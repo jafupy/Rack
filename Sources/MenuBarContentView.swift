@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct MenuBarContentView: View {
     @EnvironmentObject private var store: ServerStore
     @Environment(\.openWindow) private var openWindow
@@ -111,6 +112,7 @@ struct MenuBarContentView: View {
 
 // MARK: - Server Row
 
+@MainActor
 private struct ServerMenuRow: View {
     @EnvironmentObject private var store: ServerStore
     let server: ServerConfiguration

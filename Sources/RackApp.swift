@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 @main
 struct RackApp: App {
     @StateObject private var store = ServerStore()

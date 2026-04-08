@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 struct SettingsView: View {
     @EnvironmentObject private var store: ServerStore
     @AppStorage("terminalApp") private var terminalApp = "Ghostty"
@@ -133,6 +134,7 @@ struct SettingsView: View {
 
 // MARK: - Server Editor
 
+@MainActor
 private struct ServerEditorView: View {
     @EnvironmentObject private var store: ServerStore
     @Binding var server: ServerConfiguration
@@ -337,6 +339,7 @@ private struct ServerEditorView: View {
 
 // MARK: - Sidebar Row
 
+@MainActor
 private struct ServerListRow: View {
     @EnvironmentObject private var store: ServerStore
     let server: ServerConfiguration
