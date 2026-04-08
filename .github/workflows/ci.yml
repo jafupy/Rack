@@ -21,6 +21,3 @@ jobs:
 
       - name: Build debug target
         run: swift build
-
-      - name: Build app bundle
-        run: ./scripts/build-app.sh
