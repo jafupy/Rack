@@ -16,10 +16,7 @@ jobs:
         with:
           swift-version: "6.1"
 
-      - name: Build app bundle
-        run: ./scripts/build-app.sh
-
-      - name: Build DMG
+      - name: Build production DMG
         run: ./scripts/build-dmg.sh
 
       - name: Upload DMG artifact
