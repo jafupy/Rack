@@ -22,6 +22,8 @@ final class ServerStore: ObservableObject {
     private var processes: [ServerConfiguration.ID: ServerProcess] = [:]
     private var logFilePaths: [ServerConfiguration.ID: URL] = [:]
     private var logFileHandles: [ServerConfiguration.ID: FileHandle] = [:]
+    private var terminationSignalSources: [DispatchSourceSignal] = []
+    private var isHandlingTerminationSignal = false
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -36,6 +38,8 @@ final class ServerStore: ObservableObject {
         Task {
             autoStartServers()
         }
+
+        installTerminationSignalHandlers()
     }
 
     var selectedServer: Binding<ServerConfiguration>? {
@@ -345,6 +349,24 @@ final class ServerStore: ObservableObject {
             try data.write(to: configurationURL, options: .atomic)
         } catch {
             NSSound.beep()
+        }
+    }
+
+    private func installTerminationSignalHandlers() {
+        let signals = [SIGTERM, SIGINT, SIGHUP]
+
+        for signalNumber in signals {
+            signal(signalNumber, SIG_IGN)
+
+            let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: .main)
+            source.setEventHandler { [weak self] in
+                guard let self, !self.isHandlingTerminationSignal else { return }
+                self.isHandlingTerminationSignal = true
+                self.stopAllServers()
+                NSApp.terminate(nil)
+            }
+            source.resume()
+            terminationSignalSources.append(source)
         }
     }
 }

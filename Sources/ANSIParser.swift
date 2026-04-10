@@ -4,7 +4,7 @@ import SwiftUI
 func ansiAttributedString(_ text: String, fontSize: CGFloat = 10) -> AttributedString {
     var result = AttributedString()
 
-    var fgColor: Color = .white.opacity(0.85)
+    var fgColor: Color = poimandresFg
     var bgColor: Color? = nil
     var bold = false
     var dim = false
@@ -74,7 +74,7 @@ func ansiAttributedString(_ text: String, fontSize: CGFloat = 10) -> AttributedS
             let code = codes[p]
             switch code {
             case 0:
-                fgColor = .white.opacity(0.85); bgColor = nil; bold = false; dim = false
+                fgColor = poimandresFg; bgColor = nil; bold = false; dim = false
             case 1:
                 bold = true
             case 2:
@@ -91,7 +91,7 @@ func ansiAttributedString(_ text: String, fontSize: CGFloat = 10) -> AttributedS
                     p += 4
                 }
             case 39:
-                fgColor = .white.opacity(0.85)
+                fgColor = poimandresFg
             case 40...47:
                 bgColor = ansiColor(code - 40, bright: false)
             case 48:
@@ -141,19 +141,35 @@ func stripANSI(_ text: String) -> String {
     return result
 }
 
+// MARK: - Poimandres theme
+
+// https://github.com/oliveryh/poimandres-theme
+private let poimandresFg  = Color(hex: 0xa6accd)
+let poimandresBg          = Color(hex: 0x1b1e28)
+
 // MARK: - Color tables
 
 private func ansiColor(_ index: Int, bright: Bool) -> Color {
     switch index {
-    case 0: return bright ? Color(white: 0.55) : Color(white: 0.18)
-    case 1: return bright ? Color(red: 1.0, green: 0.45, blue: 0.45) : Color(red: 0.85, green: 0.25, blue: 0.25)
-    case 2: return bright ? Color(red: 0.45, green: 1.0, blue: 0.45) : Color(red: 0.25, green: 0.78, blue: 0.25)
-    case 3: return bright ? Color(red: 1.0, green: 1.0, blue: 0.45) : Color(red: 0.88, green: 0.78, blue: 0.22)
-    case 4: return bright ? Color(red: 0.45, green: 0.65, blue: 1.0) : Color(red: 0.28, green: 0.48, blue: 0.90)
-    case 5: return bright ? Color(red: 1.0, green: 0.45, blue: 1.0) : Color(red: 0.75, green: 0.25, blue: 0.78)
-    case 6: return bright ? Color(red: 0.45, green: 1.0, blue: 1.0) : Color(red: 0.25, green: 0.78, blue: 0.78)
-    case 7: return bright ? .white : Color(white: 0.88)
-    default: return .white
+    case 0: return bright ? Color(hex: 0x767c9d) : Color(hex: 0x1b1e28)
+    case 1: return Color(hex: 0xd0679d)
+    case 2: return Color(hex: 0x5de4c7)
+    case 3: return Color(hex: 0xfffac2)
+    case 4: return Color(hex: 0x89ddff)
+    case 5: return Color(hex: 0xfae4fc)
+    case 6: return Color(hex: 0xadd7ff)
+    case 7: return bright ? Color(hex: 0xffffff) : Color(hex: 0xa6accd)
+    default: return poimandresFg
+    }
+}
+
+private extension Color {
+    init(hex: UInt32) {
+        self.init(
+            red:   Double((hex >> 16) & 0xff) / 255,
+            green: Double((hex >> 8)  & 0xff) / 255,
+            blue:  Double( hex        & 0xff) / 255
+        )
     }
 }
 
