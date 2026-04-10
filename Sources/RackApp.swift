@@ -1,22 +1,40 @@
 import AppKit
 import SwiftUI
 
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var store: ServerStore?
+
+    func applicationWillTerminate(_ notification: Notification) {
+        store?.stopAllServers()
+    }
+}
+
 @MainActor
 @main
 struct RackApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = ServerStore()
+    @StateObject private var launchAtLogin = LaunchAtLoginController()
 
     var body: some Scene {
         MenuBarExtra("Rack.", systemImage: "server.rack") {
             MenuBarContentView()
                 .environmentObject(store)
+                .environmentObject(launchAtLogin)
+                .task {
+                    appDelegate.store = store
+                }
         }
         .menuBarExtraStyle(.window)
 
-        WindowGroup("Configure Servers", id: "main") {
+        WindowGroup("Settings", id: "main") {
             SettingsView()
                 .environmentObject(store)
+                .environmentObject(launchAtLogin)
                 .frame(minWidth: 860, minHeight: 540)
+                .task {
+                    appDelegate.store = store
+                }
         }
     }
 }

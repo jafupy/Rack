@@ -117,7 +117,7 @@ final class ServerProcess {
         let command = ([configuration.command] + configuration.parsedArguments)
             .map(shellEscape)
             .joined(separator: " ")
-        return "clear && \(command)"
+        return "clear; exec \(command)"
     }
 
     private func shellEscape(_ string: String) -> String {
