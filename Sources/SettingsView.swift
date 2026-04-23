@@ -180,7 +180,7 @@ private struct GeneralSettingsView: View {
         }
       }
       .formStyle(.grouped)
-      .frame(maxWidth: 520)
+      .frame(maxWidth: 700)
       .padding(.vertical, 8)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
