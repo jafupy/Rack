@@ -16,6 +16,10 @@
 - [ ] Unix socket API (`~/.config/rack/control.sock`, JSON-RPC-ish)
 - [ ] `rack` CLI binary (add/import/start/stop via shell)
 
+## distribution
+- [ ] Auto-updater (GitHub Releases API → download `.zip` → replace app → relaunch)
+- [ ] Homebrew Cask formula (`jafupy/rack/rack`)
+
 ## config
 - [ ] `.rack` scaffold import (slurp into global config)
 
