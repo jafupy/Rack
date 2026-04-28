@@ -17,6 +17,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
