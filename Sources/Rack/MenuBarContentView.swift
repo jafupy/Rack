@@ -147,7 +147,12 @@ private struct ServerMenuRow: View {
                     Text(server.name.isEmpty ? "Unnamed" : server.name)
                         .font(.system(size: 13, weight: .medium))
                         .lineLimit(1)
-                    if !commandLabel.isEmpty {
+                    if isRunning {
+                        Link(server.localURL, destination: URL(string: server.localURL)!)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.blue.opacity(0.8))
+                            .lineLimit(1)
+                    } else if !commandLabel.isEmpty {
                         Text(commandLabel)
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundStyle(.tertiary)

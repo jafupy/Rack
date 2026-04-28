@@ -53,6 +53,7 @@ struct ServerConfiguration: Codable, Identifiable, Equatable {
     var arguments: String = ""
     var workingDirectory: String = ""
     var autoStart: Bool = false
+    var customDomain: String = ""
     var environment: [EnvironmentVariable] = []
 
     var parsedArguments: [String] {
@@ -61,11 +62,17 @@ struct ServerConfiguration: Codable, Identifiable, Equatable {
             .map(String.init)
     }
 
+    /// Subdomain used for routing — custom if set, otherwise derived from name.
+    var routeSubdomain: String {
+        let raw = customDomain.isEmpty ? name : customDomain
+        return raw.lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "-")
+    }
+
     /// The stable .localhost URL served by RackProxy.
     var localURL: String {
-        let sanitized = name.lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-        return "http://\(sanitized).localhost:\(ProxyServer.defaultPort)"
+        "http://\(routeSubdomain).localhost:\(ProxyServer.defaultPort)"
     }
 }
 

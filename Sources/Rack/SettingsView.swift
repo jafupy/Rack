@@ -284,8 +284,33 @@ private struct ServerEditorView: View {
         TextField("Name", text: $server.name)
           .focused($focusedField, equals: .name)
         Toggle("Auto-start when Rack. launches", isOn: $server.autoStart)
+        LabeledContent("Local URL") {
+          HStack(spacing: 6) {
+            Link(server.localURL, destination: URL(string: server.localURL)!)
+              .font(.system(size: 12, design: .monospaced))
+              .foregroundStyle(.blue)
+              .lineLimit(1)
+            Button {
+              NSPasteboard.general.clearContents()
+              NSPasteboard.general.setString(server.localURL, forType: .string)
+            } label: {
+              Image(systemName: "doc.on.doc")
+                .font(.system(size: 11))
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Copy URL")
+          }
+        }
+        LabeledContent("Custom Domain") {
+          TextField("leave blank to use name", text: $server.customDomain)
+            .fontDesign(.monospaced)
+        }
       } header: {
         Label("Identity", systemImage: "tag")
+      } footer: {
+        Text("Custom domain sets the subdomain: e.g. \"api\" → api.localhost:\(ProxyServer.defaultPort)")
+          .foregroundStyle(.secondary)
       }
 
       Section {

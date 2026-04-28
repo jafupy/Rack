@@ -381,7 +381,7 @@ final class ServerStore: ObservableObject {
     // MARK: - Bridge helpers
 
     private func routeName(for config: ServerConfiguration) -> String {
-        config.name.lowercased().replacingOccurrences(of: " ", with: "-")
+        config.routeSubdomain
     }
 
     private func socketPath(for config: ServerConfiguration) -> String {
