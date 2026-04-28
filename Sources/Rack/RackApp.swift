@@ -16,6 +16,9 @@ struct RackApp: App {
     @StateObject private var store = ServerStore()
     @StateObject private var launchAtLogin = LaunchAtLoginController()
 
+    private let proxy = ProxyServer()
+    private let ipc = IPCServer()
+
     var body: some Scene {
         MenuBarExtra("Rack.", systemImage: "server.rack") {
             MenuBarContentView()
@@ -23,6 +26,14 @@ struct RackApp: App {
                 .environmentObject(launchAtLogin)
                 .task {
                     appDelegate.store = store
+                    ipc.store = store
+                    ipc.start()
+                    do {
+                        try await proxy.start()
+                    } catch {
+                        // Non-fatal: app works without proxy, just no .localhost URLs
+                        print("RackProxy failed to start: \(error)")
+                    }
                 }
         }
         .menuBarExtraStyle(.window)

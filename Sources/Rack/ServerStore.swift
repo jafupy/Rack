@@ -56,6 +56,10 @@ final class ServerStore: ObservableObject {
 
     func addServer() {
         let server = ServerConfiguration()
+        addServer(server)
+    }
+
+    func addServer(_ server: ServerConfiguration) {
         servers.append(server)
         selectedServerID = server.id
         statuses[server.id] = .stopped
@@ -134,6 +138,19 @@ final class ServerStore: ObservableObject {
         statuses[id] = .starting
         logs[id] = ""
 
+        // Assign an internal loopback port for rack-bridge
+        let bridgePort = allocatePort()
+        let socketPath = socketPath(for: config)
+
+        // Register the route so the proxy can start routing immediately
+        let route = Route(
+            name: routeName(for: config),
+            socketPath: socketPath,
+            workingDirectory: config.workingDirectory,
+            addedAt: .now
+        )
+        RouteRegistry.shared.register(route)
+
         // Create a fresh temp log file for this run
         let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: AppPaths.temporaryDirectoryName)
         try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
@@ -142,12 +159,14 @@ final class ServerStore: ObservableObject {
         logFilePaths[id] = logURL
         logFileHandles[id] = try? FileHandle(forWritingTo: logURL)
 
+        // Build a bridged config that wraps the real command with rack-bridge
+        let bridgedConfig = makeBridgedConfig(config, socketPath: socketPath, bridgePort: bridgePort)
+
         let process = ServerProcess(
-            configuration: config,
+            configuration: bridgedConfig,
             outputHandler: { [weak self] output in
                 guard let self else { return }
                 self.logs[id, default: ""] += output
-                // Append to log file
                 if let handle = self.logFileHandles[id], let data = output.data(using: .utf8) {
                     try? handle.write(contentsOf: data)
                 }
@@ -160,6 +179,8 @@ final class ServerStore: ObservableObject {
                 guard let self else { return }
                 self.processes[id] = nil
                 self.statuses[id] = status == 0 ? .stopped : .failed(message: "Exit \(status)")
+                // Clean up the route when the server exits
+                RouteRegistry.shared.unregister(name: self.routeName(for: config))
             }
         )
 
@@ -169,10 +190,14 @@ final class ServerStore: ObservableObject {
             statuses[id] = .running(pid: process.process.processIdentifier)
         } catch {
             statuses[id] = .failed(message: error.localizedDescription)
+            RouteRegistry.shared.unregister(name: routeName(for: config))
         }
     }
 
     func stopServer(id: ServerConfiguration.ID) {
+        if let config = servers.first(where: { $0.id == id }) {
+            RouteRegistry.shared.unregister(name: routeName(for: config))
+        }
         processes[id]?.stop()
         processes[id] = nil
         statuses[id] = .stopped
@@ -350,6 +375,52 @@ final class ServerStore: ObservableObject {
         } catch {
             NSSound.beep()
         }
+    }
+
+    // MARK: - Bridge helpers
+
+    private func routeName(for config: ServerConfiguration) -> String {
+        config.name.lowercased().replacingOccurrences(of: " ", with: "-")
+    }
+
+    private func socketPath(for config: ServerConfiguration) -> String {
+        let sockDir = "/tmp/rack"
+        try? FileManager.default.createDirectory(atPath: sockDir, withIntermediateDirectories: true)
+        return "\(sockDir)/\(routeName(for: config)).sock"
+    }
+
+    private func allocatePort() -> Int {
+        let used = Set(RouteRegistry.shared.allRoutes().compactMap { _ in Int?.none }) // routes don't store port
+        for port in (4000...4999).shuffled() {
+            if !isPortInUse(port) { return port }
+        }
+        return 4000
+    }
+
+    private func isPortInUse(_ port: Int) -> Bool {
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(port).bigEndian
+        addr.sin_addr.s_addr = INADDR_LOOPBACK.bigEndian
+        let sock = socket(AF_INET, SOCK_STREAM, 0)
+        defer { close(sock) }
+        return withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+            }
+        }
+    }
+
+    /// Wraps the user's command in rack-bridge so it connects via unix socket.
+    private func makeBridgedConfig(_ config: ServerConfiguration, socketPath: String, bridgePort: Int) -> ServerConfiguration {
+        let bridgePath = Bundle.main.path(forResource: "rack-bridge", ofType: nil)
+            ?? "/usr/local/bin/rack-bridge"
+
+        var bridged = config
+        // rack-bridge --socket <path> --port <n> -- <original command>
+        bridged.command = bridgePath
+        bridged.arguments = "--socket \(socketPath) --port \(bridgePort) -- \(config.command) \(config.arguments)"
+        return bridged
     }
 
     private func installTerminationSignalHandlers() {
