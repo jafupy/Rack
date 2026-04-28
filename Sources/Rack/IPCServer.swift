@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 // MARK: - Message types
@@ -82,10 +83,6 @@ struct IPCServerStatus: Codable, Sendable {
 @MainActor
 final class IPCServer {
     private let socketPath: String
-    private var listener: NWListener?
-    private let decoder = JSONDecoder()
-    private let encoder = JSONEncoder()
-
     weak var store: ServerStore?
 
     init() {

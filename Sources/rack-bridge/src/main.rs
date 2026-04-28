@@ -238,5 +238,4 @@ fn ctrlc_or_term(socket_path: PathBuf) {
     }
 }
 
-// Link against libc for signal/etc
-extern crate libc;
+
