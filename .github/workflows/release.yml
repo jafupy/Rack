@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      # Build rack-bridge as a universal binary
+      - name: Build rack-bridge (universal)
+        run: |
+          cargo build --release --target aarch64-apple-darwin --manifest-path Sources/rack-bridge/Cargo.toml
+          cargo build --release --target x86_64-apple-darwin --manifest-path Sources/rack-bridge/Cargo.toml
+          lipo -create \
+            Sources/rack-bridge/target/aarch64-apple-darwin/release/rack-bridge \
+            Sources/rack-bridge/target/x86_64-apple-darwin/release/rack-bridge \
+            -output rack-bridge-universal
+
+      # Build Swift release binaries
+      - name: Build Swift (release)
+        run: swift build -c release --target Rack --target rack
+
+      # Package everything
+      - name: Package
+        run: |
+          TAG=${GITHUB_REF_NAME}
+          mkdir -p dist/rack-${TAG}
+          cp .build/release/rack dist/rack-${TAG}/rack
+          cp rack-bridge-universal dist/rack-${TAG}/rack-bridge
+          cp README.md dist/rack-${TAG}/ 2>/dev/null || true
+          cd dist && tar -czf rack-${TAG}-macos.tar.gz rack-${TAG}/
+          echo "ARCHIVE=dist/rack-${TAG}-macos.tar.gz" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARCHIVE }}
+          generate_release_notes: true
