@@ -3,3 +3,11 @@
 dist/
 .claude/
 
+# Rust build output
+target/
+
+# Swift build artifacts (spill from non-standard build roots)
+*.o
+*.d
+*.dia
+*.swiftdeps
