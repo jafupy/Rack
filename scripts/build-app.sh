@@ -5,15 +5,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/.build"
 RELEASE_DIR="$BUILD_DIR/release"
-APP_DIR="$ROOT_DIR/dist/Rack.app"
+APP_DIR="$ROOT_DIR/.dist/Rack.app"
 MACOS_DIR="$APP_DIR/Contents/MacOS"
 RESOURCES_DIR="$APP_DIR/Contents/Resources"
 PLIST_PATH="$APP_DIR/Contents/Info.plist"
 EXECUTABLE_PATH=""
 
-mkdir -p "$BUILD_DIR" "$ROOT_DIR/dist"
+mkdir -p "$BUILD_DIR" "$ROOT_DIR/.dist"
 
-swift build --configuration release --scratch-path "$BUILD_DIR"
+swift build --configuration release --target Rack --scratch-path "$BUILD_DIR"
 
 if [[ -x "$BUILD_DIR/arm64-apple-macosx/release/Rack" ]]; then
   EXECUTABLE_PATH="$BUILD_DIR/arm64-apple-macosx/release/Rack"
