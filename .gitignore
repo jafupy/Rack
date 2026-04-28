@@ -1,6 +1,6 @@
 .DS_Store
 .build/
-dist/
+.dist/
 .claude/
 
 # Rust build output

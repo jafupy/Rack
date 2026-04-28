@@ -13,6 +13,9 @@ jobs:
     name: Build & Release
     runs-on: macos-15
 
+    env:
+      CARGO_TARGET_DIR: .build/rust
+
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +33,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            .build/rust/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       # Build rack-bridge as a universal binary
@@ -38,9 +42,9 @@ jobs:
           cargo build --release --target aarch64-apple-darwin --manifest-path Sources/rack-bridge/Cargo.toml
           cargo build --release --target x86_64-apple-darwin --manifest-path Sources/rack-bridge/Cargo.toml
           lipo -create \
-            Sources/rack-bridge/target/aarch64-apple-darwin/release/rack-bridge \
-            Sources/rack-bridge/target/x86_64-apple-darwin/release/rack-bridge \
-            -output rack-bridge-universal
+            .build/rust/aarch64-apple-darwin/release/rack-bridge \
+            .build/rust/x86_64-apple-darwin/release/rack-bridge \
+            -output .build/rack-bridge-universal
 
       # Build Swift release binaries
       - name: Build Swift (release)
@@ -50,12 +54,12 @@ jobs:
       - name: Package
         run: |
           TAG=${GITHUB_REF_NAME}
-          mkdir -p dist/rack-${TAG}
-          cp .build/release/rack dist/rack-${TAG}/rack
-          cp rack-bridge-universal dist/rack-${TAG}/rack-bridge
-          cp README.md dist/rack-${TAG}/ 2>/dev/null || true
-          cd dist && tar -czf rack-${TAG}-macos.tar.gz rack-${TAG}/
-          echo "ARCHIVE=dist/rack-${TAG}-macos.tar.gz" >> $GITHUB_ENV
+          mkdir -p .dist/rack-${TAG}
+          cp .build/release/rack .dist/rack-${TAG}/rack
+          cp .build/rack-bridge-universal .dist/rack-${TAG}/rack-bridge
+          cp README.md .dist/rack-${TAG}/ 2>/dev/null || true
+          cd .dist && tar -czf rack-${TAG}-macos.tar.gz rack-${TAG}/
+          echo "ARCHIVE=.dist/rack-${TAG}-macos.tar.gz" >> $GITHUB_ENV
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
