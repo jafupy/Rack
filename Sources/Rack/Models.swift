@@ -60,6 +60,13 @@ struct ServerConfiguration: Codable, Identifiable, Equatable {
             .split(whereSeparator: \.isWhitespace)
             .map(String.init)
     }
+
+    /// The stable .localhost URL served by RackProxy.
+    var localURL: String {
+        let sanitized = name.lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+        return "http://\(sanitized).localhost:\(ProxyServer.defaultPort)"
+    }
 }
 
 struct PersistedConfiguration: Codable {
