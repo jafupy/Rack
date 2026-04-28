@@ -44,7 +44,7 @@ enum IPCMessage: Codable, Sendable {
     }
 }
 
-enum IPCReply: Codable, Sendable {
+enum IPCReply: Encodable, Sendable {
     case ok
     case registered(name: String, url: String)
     case servers([IPCServerStatus])

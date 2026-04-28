@@ -57,7 +57,10 @@ fn parse_args() -> Result<Args, String> {
                 return Ok(Args {
                     socket_path: socket_path.ok_or("--socket is required")?,
                     port: port.ok_or("--port is required")?,
-                    command: rest.first().cloned().ok_or("command is required after --")?,
+                    command: rest
+                        .first()
+                        .cloned()
+                        .ok_or("command is required after --")?,
                     command_args: rest.iter().skip(1).cloned().collect(),
                 });
             }
@@ -198,21 +201,19 @@ fn main() {
             Err(_) => continue,
         };
 
-        thread::spawn(move || {
-            match connect_to_server(port) {
-                Ok(tcp_stream) => {
-                    bridge(unix_stream, tcp_stream);
-                }
-                Err(e) => {
-                    let mut s = unix_stream;
-                    let body = format!("rack-bridge: server not ready after 30s: {e}");
-                    let response = format!(
+        thread::spawn(move || match connect_to_server(port) {
+            Ok(tcp_stream) => {
+                bridge(unix_stream, tcp_stream);
+            }
+            Err(e) => {
+                let mut s = unix_stream;
+                let body = format!("rack-bridge: server not ready after 30s: {e}");
+                let response = format!(
                         "HTTP/1.1 502 Bad Gateway\r\nContent-Length: {}\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n{}",
                         body.len(),
                         body
                     );
-                    let _ = s.write_all(response.as_bytes());
-                }
+                let _ = s.write_all(response.as_bytes());
             }
         });
     }
@@ -238,5 +239,3 @@ fn ctrlc_or_term(socket_path: PathBuf) {
         });
     }
 }
-
-

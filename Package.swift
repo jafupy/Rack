@@ -29,12 +29,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "rack",
-            dependencies: [
-                .product(name: "NIOCore", package: "swift-nio"),
-                .product(name: "NIOPosix", package: "swift-nio"),
-                .product(name: "NIOHTTP1", package: "swift-nio"),
-            ],
-            path: "Sources/rack"
+            path: "Sources/rack-cli"
         ),
         // rack-bridge is a Rust binary built via Cargo, not SPM.
         // See Sources/rack-bridge/Cargo.toml and .github/workflows/ci.yml.
