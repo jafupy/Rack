@@ -1,0 +1,11 @@
+[package]
+name = "rack-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rack-bridge"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"

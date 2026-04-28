@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 // MARK: - Message types
@@ -43,7 +44,7 @@ enum IPCMessage: Codable, Sendable {
     }
 }
 
-enum IPCReply: Codable, Sendable {
+enum IPCReply: Encodable, Sendable {
     case ok
     case registered(name: String, url: String)
     case servers([IPCServerStatus])
@@ -82,10 +83,6 @@ struct IPCServerStatus: Codable, Sendable {
 @MainActor
 final class IPCServer {
     private let socketPath: String
-    private var listener: NWListener?
-    private let decoder = JSONDecoder()
-    private let encoder = JSONEncoder()
-
     weak var store: ServerStore?
 
     init() {
