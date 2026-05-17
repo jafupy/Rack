@@ -1,0 +1,14 @@
+{
+  "name": "Rack",
+  "displayName": "Rack.",
+  "version": "0.2.0",
+  "channel": "DEV",
+  "schemaVersion": "3",
+  "identifier": "com.jafu.rack",
+  "author": "jafu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jafupy/Rack.git"
+  }
+}

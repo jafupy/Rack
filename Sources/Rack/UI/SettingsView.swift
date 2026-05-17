@@ -137,6 +137,8 @@ private struct GeneralSettingsView: View {
   @EnvironmentObject private var store: ServerStore
   @EnvironmentObject private var launchAtLogin: LaunchAtLoginController
   @AppStorage("terminalApp") private var terminalApp = "Ghostty"
+  @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
+  @State private var portForwardingError = false
 
   private let terminals = ["Ghostty", "Terminal", "iTerm2", "Warp"]
 
@@ -159,6 +161,37 @@ private struct GeneralSettingsView: View {
           }
         } header: {
           Label("Application", systemImage: "app.badge")
+        }
+
+        Section {
+          Toggle("Standard web ports (80, 443)", isOn: Binding(
+            get: { standardPortsEnabled },
+            set: { enable in
+              portForwardingError = false
+              if enable {
+                if ProxyServer.setupPortForwarding() {
+                  standardPortsEnabled = true
+                } else {
+                  portForwardingError = true
+                }
+              } else {
+                ProxyServer.teardownPortForwarding()
+                standardPortsEnabled = false
+              }
+            }
+          ))
+          if portForwardingError {
+            Text("Setup failed — administrator access is required.")
+              .font(.caption)
+              .foregroundStyle(.red)
+          }
+        } header: {
+          Label("Network", systemImage: "network")
+        } footer: {
+          Text(standardPortsEnabled
+            ? "Servers available at http://name.localhost and https://name.localhost. Requires administrator once; persists across reboots."
+            : "Servers available at http://name.localhost:\(ProxyServer.boundPort).")
+            .foregroundStyle(.secondary)
         }
 
         Section {
@@ -199,6 +232,7 @@ private struct ServerEditorView: View {
   @Binding var server: ServerConfiguration
   @FocusState private var focusedField: Field?
   @State private var showingDeleteConfirmation = false
+  @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
 
   private enum Field { case name, command }
 
@@ -286,10 +320,17 @@ private struct ServerEditorView: View {
         Toggle("Auto-start when Rack. launches", isOn: $server.autoStart)
         LabeledContent("Local URL") {
           HStack(spacing: 6) {
-            Link(server.localURL, destination: URL(string: server.localURL)!)
-              .font(.system(size: 12, design: .monospaced))
-              .foregroundStyle(.blue)
-              .lineLimit(1)
+            if let url = URL(string: server.localURL) {
+              Link(server.localURL, destination: url)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.blue)
+                .lineLimit(1)
+            } else {
+              Text(server.localURL)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
             Button {
               NSPasteboard.general.clearContents()
               NSPasteboard.general.setString(server.localURL, forType: .string)
@@ -309,7 +350,9 @@ private struct ServerEditorView: View {
       } header: {
         Label("Identity", systemImage: "tag")
       } footer: {
-        Text("Custom domain sets the subdomain: e.g. \"api\" → api.localhost:\(ProxyServer.defaultPort)")
+        Text(UserDefaults.standard.bool(forKey: "standardPortsEnabled")
+          ? "Custom domain sets the subdomain: e.g. \"api\" → api.localhost"
+          : "Custom domain sets the subdomain: e.g. \"api\" → api.localhost:\(ProxyServer.boundPort)")
           .foregroundStyle(.secondary)
       }
 
@@ -320,7 +363,7 @@ private struct ServerEditorView: View {
             .fontDesign(.monospaced)
         }
         LabeledContent("Arguments") {
-          TextField("run dev --port 3000", text: $server.arguments)
+          TextField("run dev", text: $server.arguments)
             .fontDesign(.monospaced)
         }
         LabeledContent("Directory") {
@@ -332,8 +375,22 @@ private struct ServerEditorView: View {
               .controlSize(.small)
           }
         }
+        LabeledContent("Port") {
+          TextField(
+            "auto",
+            text: Binding(
+              get: { server.port.map(String.init) ?? "" },
+              set: { server.port = Int($0.filter(\.isNumber)) }
+            )
+          )
+          .fontDesign(.monospaced)
+          .frame(maxWidth: 80)
+        }
       } header: {
         Label("Command", systemImage: "chevron.right.square")
+      } footer: {
+        Text("Set Port if your server ignores the PORT environment variable (e.g. Astro, some Vite configs). Leave blank to auto-assign.")
+          .foregroundStyle(.secondary)
       }
 
       Section {

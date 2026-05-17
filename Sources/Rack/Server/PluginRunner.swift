@@ -55,6 +55,14 @@ struct ViteDetector: Detector {
     }
 }
 
+struct AstroDetector: Detector {
+    let priority: UInt32 = 110
+    func detect(_ manifest: ProjectManifest) -> DevCommand? {
+        guard manifest.files.contains(where: { $0.hasPrefix("astro.config.") }) else { return nil }
+        return DevCommand(command: "\(packageManager(manifest)) run dev", env: [:], name: nil, portFlag: "--port")
+    }
+}
+
 struct NodeDetector: Detector {
     let priority: UInt32 = 100
     func detect(_ manifest: ProjectManifest) -> DevCommand? {
@@ -216,6 +224,7 @@ final class PluginRunner: Sendable {
     private init() {
         var d: [any Detector] = [
             ViteDetector(),
+            AstroDetector(),
             NodeDetector(),
             SwiftDetector(),
             RustDetector(),

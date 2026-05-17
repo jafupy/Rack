@@ -26,18 +26,6 @@ enum ServerStatus: Equatable {
         return false
     }
 
-    var tint: String {
-        switch self {
-        case .stopped:
-            return "secondary"
-        case .starting:
-            return "orange"
-        case .running:
-            return "green"
-        case .failed:
-            return "red"
-        }
-    }
 }
 
 struct ServerConfiguration: Codable, Identifiable, Equatable {
@@ -55,6 +43,11 @@ struct ServerConfiguration: Codable, Identifiable, Equatable {
     var autoStart: Bool = false
     var customDomain: String = ""
     var environment: [EnvironmentVariable] = []
+    /// Explicit port the dev server listens on. When set the proxy routes directly to this port
+    /// and skips PORT injection. When nil a free port is allocated and injected via PORT / portFlag.
+    var port: Int? = nil
+    /// CLI flag to pass the port number to servers that ignore the PORT env var (e.g. "--port", "-p").
+    var portFlag: String? = nil
 
     var parsedArguments: [String] {
         arguments
@@ -65,14 +58,20 @@ struct ServerConfiguration: Codable, Identifiable, Equatable {
     /// Subdomain used for routing — custom if set, otherwise derived from name.
     var routeSubdomain: String {
         let raw = customDomain.isEmpty ? name : customDomain
-        return raw.lowercased()
+        let trimmed = raw.lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: " ", with: "-")
+        return trimmed.hasSuffix(".localhost")
+            ? String(trimmed.dropLast(".localhost".count))
+            : trimmed
     }
 
-    /// The stable .localhost URL served by RackProxy.
+    /// The .localhost URL served by the proxy. Omits the port if port-80 forwarding is active.
     var localURL: String {
-        "http://\(routeSubdomain).localhost:\(ProxyServer.defaultPort)"
+        if UserDefaults.standard.bool(forKey: "standardPortsEnabled") {
+            return "http://\(routeSubdomain).localhost"
+        }
+        return "http://\(routeSubdomain).localhost:\(ProxyServer.boundPort)"
     }
 }
 

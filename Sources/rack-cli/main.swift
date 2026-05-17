@@ -112,7 +112,12 @@ func inferName(at directory: URL) -> String {
 
 // MARK: - Detection (calls PluginRunner logic inline)
 
-func detectCommand(at directory: URL) -> String? {
+struct DetectedCommand {
+    let command: String
+    let portFlag: String?
+}
+
+func detectCommand(at directory: URL) -> DetectedCommand? {
     let fm = FileManager.default
     let files = Set((try? fm.contentsOfDirectory(atPath: directory.path)) ?? [])
 
@@ -125,28 +130,39 @@ func detectCommand(at directory: URL) -> String? {
         return "npm"
     }
 
-    // Vite (before generic node)
+    // Vite — needs --port flag, ignores PORT env var
     if files.contains(where: { $0.hasPrefix("vite.config.") }) {
-        return "\(pm()) exec vite"
+        return DetectedCommand(command: "\(pm()) exec vite", portFlag: "--port")
     }
 
-    // Node
+    // Astro — uses --port flag, ignores PORT env var
+    if files.contains(where: { $0.hasPrefix("astro.config.") }) {
+        return DetectedCommand(command: "\(pm()) run dev", portFlag: "--port")
+    }
+
+    // Node — Next.js and CRA respect PORT; others may not
     if let pkg = content("package.json"),
        let json = try? JSONSerialization.jsonObject(with: Data(pkg.utf8)) as? [String: Any],
        let scripts = json["scripts"] as? [String: Any] {
+        // Next.js uses -p flag
+        let deps = (json["dependencies"] as? [String: Any] ?? [:])
+            .merging(json["devDependencies"] as? [String: Any] ?? [:]) { a, _ in a }
+        let isNext = deps["next"] != nil
         for script in ["dev", "start", "serve"] {
-            if scripts[script] != nil { return "\(pm()) run \(script)" }
+            if scripts[script] != nil {
+                return DetectedCommand(command: "\(pm()) run \(script)", portFlag: isNext ? "-p" : nil)
+            }
         }
     }
 
-    if has("Package.swift") { return "swift run" }
-    if has("Cargo.toml")    { return "cargo run" }
-    if has("go.mod")        { return "go run ." }
-    if has("manage.py")     { return "python manage.py runserver" }
-    if let gf = content("Gemfile"), gf.contains("rails") { return "rails server" }
-    if has("artisan")       { return "php artisan serve" }
+    if has("Package.swift") { return DetectedCommand(command: "swift run", portFlag: nil) }
+    if has("Cargo.toml")    { return DetectedCommand(command: "cargo run", portFlag: nil) }
+    if has("go.mod")        { return DetectedCommand(command: "go run .", portFlag: nil) }
+    if has("manage.py")     { return DetectedCommand(command: "python manage.py runserver", portFlag: nil) }
+    if let gf = content("Gemfile"), gf.contains("rails") { return DetectedCommand(command: "rails server", portFlag: "-p") }
+    if has("artisan")       { return DetectedCommand(command: "php artisan serve", portFlag: "--port") }
     if let mf = content("Makefile"), mf.contains("\ndev:") || mf.hasPrefix("dev:") {
-        return "make dev"
+        return DetectedCommand(command: "make dev", portFlag: nil)
     }
 
     return nil
@@ -156,25 +172,30 @@ func detectCommand(at directory: URL) -> String? {
 
 func cmdDev() throws {
     let dir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-    guard let command = detectCommand(at: dir) else {
+    guard let detected = detectCommand(at: dir) else {
         print("rack: couldn't detect a dev command in \(dir.lastPathComponent)")
         print("      supported: Node/Vite/Swift/Rust/Go/Django/Rails/Laravel/Make")
         exit(1)
     }
 
     let name = inferName(at: dir)
-    print("rack: detected  → \(command)")
+    print("rack: detected  → \(detected.command)")
     print("rack: name      → \(name)")
     print("rack: sending to Rack.app...")
 
+    var payload: [String: Any] = [
+        "name": name,
+        "command": detected.command,
+        "workingDirectory": dir.path,
+        "environment": [:] as [String: String],
+    ]
+    if let portFlag = detected.portFlag {
+        payload["portFlag"] = portFlag
+    }
+
     let reply = try send([
         "type": "register",
-        "payload": [
-            "name": name,
-            "command": command,
-            "workingDirectory": dir.path,
-            "environment": [:] as [String: String],
-        ]
+        "payload": payload,
     ])
 
     if let url = (reply?["payload"] as? [String: String])?["url"] {
