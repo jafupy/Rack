@@ -2,12 +2,16 @@ import Foundation
 
 struct Route: Codable, Sendable {
     let name: String
-    let socketPath: String
+    /// Unix socket path created by rack-bridge once the server is listening.
+    /// Empty until the server is ready. Preferred over tcpPort when non-empty.
+    var socketPath: String
+    /// TCP port used when rack-bridge is unavailable. 0 until ready.
+    var tcpPort: Int
     let workingDirectory: String
     let addedAt: Date
 }
 
-/// Thread-safe registry mapping server names to their unix socket paths.
+/// Thread-safe registry mapping server names to their TCP ports.
 /// Uses NSLock so the proxy handler can look up routes synchronously from any thread.
 final class RouteRegistry: @unchecked Sendable {
     private var routes: [String: Route] = [:]
@@ -26,6 +30,26 @@ final class RouteRegistry: @unchecked Sendable {
 
     func register(_ route: Route) {
         lock.withLock { routes[route.name] = route }
+        try? persist()
+    }
+
+    func updatePort(name: String, tcpPort: Int) {
+        lock.withLock {
+            guard let existing = routes[name] else { return }
+            routes[name] = Route(name: existing.name, socketPath: existing.socketPath,
+                                 tcpPort: tcpPort, workingDirectory: existing.workingDirectory,
+                                 addedAt: existing.addedAt)
+        }
+        try? persist()
+    }
+
+    func updateSocketPath(name: String, socketPath: String) {
+        lock.withLock {
+            guard let existing = routes[name] else { return }
+            routes[name] = Route(name: existing.name, socketPath: socketPath,
+                                 tcpPort: existing.tcpPort, workingDirectory: existing.workingDirectory,
+                                 addedAt: existing.addedAt)
+        }
         try? persist()
     }
 

@@ -21,6 +21,7 @@ final class ServerStore: ObservableObject {
     @Published private(set) var logs: [ServerConfiguration.ID: String] = [:]
 
     private var processes: [ServerConfiguration.ID: ServerProcess] = [:]
+    private var readyTasks: [ServerConfiguration.ID: Task<Void, Never>] = [:]
     private var logFilePaths: [ServerConfiguration.ID: URL] = [:]
     private var logFileHandles: [ServerConfiguration.ID: FileHandle] = [:]
     private var terminationSignalSources: [DispatchSourceSignal] = []
@@ -139,20 +140,27 @@ final class ServerStore: ObservableObject {
         statuses[id] = .starting
         logs[id] = ""
 
-        // Assign an internal loopback port for rack-bridge
-        let bridgePort = allocatePort()
-        let socketPath = socketPath(for: config)
+        let subdomain = config.routeSubdomain
 
-        // Register the route so the proxy can start routing immediately
-        let route = Route(
-            name: routeName(for: config),
-            socketPath: socketPath,
+        let port = config.port ?? allocatePort()
+        let socketPath = Self.socketPath(for: subdomain)
+
+        // Remove any stale socket from a previous run.
+        try? FileManager.default.removeItem(atPath: socketPath)
+        try? FileManager.default.createDirectory(
+            atPath: "/tmp/rack", withIntermediateDirectories: true, attributes: nil)
+
+        // Register route immediately with empty socketPath / zero tcpPort.
+        // awaitServerReady fills these in once the server is listening.
+        RouteRegistry.shared.register(Route(
+            name: subdomain,
+            socketPath: "",
+            tcpPort: 0,
             workingDirectory: config.workingDirectory,
             addedAt: .now
-        )
-        RouteRegistry.shared.register(route)
+        ))
 
-        // Create a fresh temp log file for this run
+        // Create a fresh temp log file for this run.
         let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: AppPaths.temporaryDirectoryName)
         try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
         let logURL = tmpDir.appending(path: "\(id.uuidString).log")
@@ -160,11 +168,12 @@ final class ServerStore: ObservableObject {
         logFilePaths[id] = logURL
         logFileHandles[id] = try? FileHandle(forWritingTo: logURL)
 
-        // Build a bridged config that wraps the real command with rack-bridge
-        let bridgedConfig = makeBridgedConfig(config, socketPath: socketPath, bridgePort: bridgePort)
+        let useBridge = ServerProcess.findRackBridge() != nil
 
         let process = ServerProcess(
-            configuration: bridgedConfig,
+            configuration: config,
+            socketPath: socketPath,
+            port: port,
             outputHandler: { [weak self] output in
                 guard let self else { return }
                 self.logs[id, default: ""] += output
@@ -180,24 +189,41 @@ final class ServerStore: ObservableObject {
                 guard let self else { return }
                 self.processes[id] = nil
                 self.statuses[id] = status == 0 ? .stopped : .failed(message: "Exit \(status)")
-                // Clean up the route when the server exits
-                RouteRegistry.shared.unregister(name: self.routeName(for: config))
+                RouteRegistry.shared.unregister(name: subdomain)
+                try? FileManager.default.removeItem(atPath: socketPath)
             }
         )
+
+        // For TCP fallback (no rack-bridge): snapshot ports before launch.
+        let portSnapshot = (!useBridge && config.port == nil) ? ServerStore.loopbackListeningPorts() : []
 
         do {
             try process.start()
             processes[id] = process
-            statuses[id] = .running(pid: process.process.processIdentifier)
+            let pid = process.process.processIdentifier
+            readyTasks[id] = Task { [weak self] in
+                if useBridge {
+                    await self?.awaitServerReadyViaSocket(
+                        id: id, pid: pid, subdomain: subdomain, socketPath: socketPath)
+                } else {
+                    await self?.awaitServerReadyViaTCP(
+                        id: id, pid: pid, subdomain: subdomain,
+                        explicitPort: config.port ?? port, portSnapshot: portSnapshot)
+                }
+            }
         } catch {
             statuses[id] = .failed(message: error.localizedDescription)
-            RouteRegistry.shared.unregister(name: routeName(for: config))
+            RouteRegistry.shared.unregister(name: subdomain)
         }
     }
 
     func stopServer(id: ServerConfiguration.ID) {
+        readyTasks[id]?.cancel()
+        readyTasks[id] = nil
         if let config = servers.first(where: { $0.id == id }) {
-            RouteRegistry.shared.unregister(name: routeName(for: config))
+            let subdomain = config.routeSubdomain
+            RouteRegistry.shared.unregister(name: subdomain)
+            try? FileManager.default.removeItem(atPath: Self.socketPath(for: subdomain))
         }
         processes[id]?.stop()
         processes[id] = nil
@@ -348,12 +374,15 @@ final class ServerStore: ObservableObject {
         let new = configurationURL
         guard !fileManager.fileExists(atPath: new.path) else { return }
 
-        let legacyCandidates = [
+        var legacyCandidates = [
             FileManager.default.homeDirectoryForCurrentUser
                 .appending(path: ".config/\(AppPaths.legacyStorageDirectoryName)/config.json"),
-            fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                .appending(path: "\(AppPaths.legacyAppSupportDirectoryName)/servers.json"),
         ]
+        if let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            legacyCandidates.append(
+                appSupportURL.appending(path: "\(AppPaths.legacyAppSupportDirectoryName)/servers.json")
+            )
+        }
 
         guard let old = legacyCandidates.first(where: { fileManager.fileExists(atPath: $0.path) }) else { return }
         try? fileManager.createDirectory(at: new.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -378,32 +407,103 @@ final class ServerStore: ObservableObject {
         }
     }
 
-    // MARK: - Bridge helpers
+    // MARK: - Port / socket helpers
 
-    private func routeName(for config: ServerConfiguration) -> String {
-        config.routeSubdomain
-    }
-
-    private func socketPath(for config: ServerConfiguration) -> String {
-        let sockDir = "/tmp/rack"
-        try? FileManager.default.createDirectory(atPath: sockDir, withIntermediateDirectories: true)
-        return "\(sockDir)/\(routeName(for: config)).sock"
+    private nonisolated static func socketPath(for subdomain: String) -> String {
+        "/tmp/rack/\(subdomain).sock"
     }
 
     private func allocatePort() -> Int {
-        let used = Set(RouteRegistry.shared.allRoutes().compactMap { _ in Int?.none }) // routes don't store port
         for port in (4000...4999).shuffled() {
-            if !isPortInUse(port) { return port }
+            if !ServerStore.probePort(port) { return port }
         }
         return 4000
     }
 
-    private func isPortInUse(_ port: Int) -> Bool {
+    /// Rack-bridge mode: poll for the unix socket to appear, then mark running.
+    private func awaitServerReadyViaSocket(id: ServerConfiguration.ID, pid: Int32,
+                                           subdomain: String, socketPath: String) async {
+        for _ in 0..<120 {
+            do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            guard statuses[id] == .starting else { return }
+            let ready = await Task.detached(priority: .utility) { ServerStore.probeUnixSocket(socketPath) }.value
+            if ready {
+                RouteRegistry.shared.updateSocketPath(name: subdomain, socketPath: socketPath)
+                statuses[id] = .running(pid: pid)
+                return
+            }
+        }
+        if statuses[id] == .starting {
+            statuses[id] = .failed(message: "Did not start within 60s")
+        }
+    }
+
+    /// TCP fallback (no rack-bridge): probe the port directly or discover a new loopback port.
+    private func awaitServerReadyViaTCP(id: ServerConfiguration.ID, pid: Int32, subdomain: String,
+                                        explicitPort: Int, portSnapshot: Set<Int>) async {
+        // If port was explicitly configured, probe it directly.
+        if portSnapshot.isEmpty {
+            for _ in 0..<120 {
+                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                guard statuses[id] == .starting else { return }
+                let up = await Task.detached(priority: .utility) { ServerStore.probePort(explicitPort) }.value
+                if up {
+                    RouteRegistry.shared.updatePort(name: subdomain, tcpPort: explicitPort)
+                    statuses[id] = .running(pid: pid)
+                    return
+                }
+            }
+        } else {
+            for _ in 0..<120 {
+                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                guard statuses[id] == .starting else { return }
+                let current = await Task.detached(priority: .utility) {
+                    ServerStore.loopbackListeningPorts()
+                }.value
+                let newPorts = current.subtracting(portSnapshot).filter { $0 > 1024 }
+                if let port = newPorts.sorted().first {
+                    RouteRegistry.shared.updatePort(name: subdomain, tcpPort: port)
+                    statuses[id] = .running(pid: pid)
+                    return
+                }
+            }
+        }
+        if statuses[id] == .starting {
+            statuses[id] = .failed(message: "Did not start within 60s")
+        }
+    }
+
+    private nonisolated static func probeUnixSocket(_ path: String) -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &addr.sun_path) { dest in
+            path.withCString { src in
+                guard let base = dest.baseAddress else { return }
+                strlcpy(base.assumingMemoryBound(to: CChar.self), src, dest.count)
+            }
+        }
+        return withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) == 0
+            }
+        }
+    }
+
+    private nonisolated static func probePort(_ port: Int) -> Bool {
+        if probeIPv4Port(port) { return true }
+        return probeIPv6Port(port)
+    }
+
+    private nonisolated static func probeIPv4Port(_ port: Int) -> Bool {
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = in_port_t(port).bigEndian
-        addr.sin_addr.s_addr = INADDR_LOOPBACK.bigEndian
+        addr.sin_addr.s_addr = in_addr_t(0x7f000001).bigEndian
         let sock = socket(AF_INET, SOCK_STREAM, 0)
+        guard sock >= 0 else { return false }
         defer { close(sock) }
         return withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -412,16 +512,48 @@ final class ServerStore: ObservableObject {
         }
     }
 
-    /// Wraps the user's command in rack-bridge so it connects via unix socket.
-    private func makeBridgedConfig(_ config: ServerConfiguration, socketPath: String, bridgePort: Int) -> ServerConfiguration {
-        let bridgePath = Bundle.main.path(forResource: "rack-bridge", ofType: nil)
-            ?? "/usr/local/bin/rack-bridge"
+    private nonisolated static func probeIPv6Port(_ port: Int) -> Bool {
+        var addr = sockaddr_in6()
+        addr.sin6_family = sa_family_t(AF_INET6)
+        addr.sin6_port = in_port_t(port).bigEndian
+        addr.sin6_addr = in6addr_loopback
+        let sock = socket(AF_INET6, SOCK_STREAM, 0)
+        guard sock >= 0 else { return false }
+        defer { close(sock) }
+        return withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in6>.size)) == 0
+            }
+        }
+    }
 
-        var bridged = config
-        // rack-bridge --socket <path> --port <n> -- <original command>
-        bridged.command = bridgePath
-        bridged.arguments = "--socket \(socketPath) --port \(bridgePort) -- \(config.command) \(config.arguments)"
-        return bridged
+    private nonisolated static func loopbackListeningPorts() -> Set<Int> {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        p.arguments = ["-iTCP", "-sTCP:LISTEN", "-n", "-P", "-F", "n"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = Pipe()
+        guard (try? p.run()) != nil else { return [] }
+        p.waitUntilExit()
+        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        var ports = Set<Int>()
+        for line in out.components(separatedBy: "\n") {
+            guard line.hasPrefix("n") else { continue }
+            let addr = String(line.dropFirst())
+            let isLoopback = addr.hasPrefix("127.0.0.1:")
+                || addr.hasPrefix("*:")
+                || addr.hasPrefix("[::1]:")
+                || addr.hasPrefix("::1:")
+                || addr.hasPrefix("*.")
+            guard isLoopback else { continue }
+            let portStr = addr.components(separatedBy: ":").last?
+                .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+            if let portStr, let port = Int(portStr), port > 1024 {
+                ports.insert(port)
+            }
+        }
+        return ports
     }
 
     private func installTerminationSignalHandlers() {

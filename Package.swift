@@ -8,10 +8,11 @@ let package = Package(
     ],
     products: [
         .executable(name: "Rack", targets: ["Rack"]),
-        .executable(name: "rack", targets: ["rack"]),
+        .executable(name: "rack", targets: ["RackCLI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
+        .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.27.0"),
     ],
     targets: [
         .executableTarget(
@@ -20,18 +21,19 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOWebSocket", package: "swift-nio"),
+                .product(name: "NIOSSL", package: "swift-nio-ssl"),
             ],
             path: "Sources/Rack",
             exclude: ["d.md"],
             resources: [
                 .copy("Plugins"),
+                .copy("PackageInfo.json"),
             ]
         ),
         .executableTarget(
-            name: "rack",
+            name: "RackCLI",
             path: "Sources/rack-cli"
         ),
-        // rack-bridge is a Rust binary built via Cargo, not SPM.
-        // See Sources/rack-bridge/Cargo.toml and .github/workflows/ci.yml.
     ]
 )

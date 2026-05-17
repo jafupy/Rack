@@ -8,6 +8,7 @@ struct IPCRegisterPayload: Codable, Sendable {
     let command: String
     let workingDirectory: String
     let environment: [String: String]
+    let portFlag: String?
 }
 
 enum IPCMessage: Codable, Sendable {
@@ -176,6 +177,7 @@ final class IPCServer {
             config.environment = payload.environment.map {
                 ServerConfiguration.EnvironmentVariable(key: $0.key, value: $0.value)
             }
+            config.portFlag = payload.portFlag
             config.autoStart = true
             store.addServer(config)
             store.startServer(id: config.id)

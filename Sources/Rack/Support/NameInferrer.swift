@@ -4,8 +4,6 @@ struct InferredProject: Sendable {
     let name: String
     let sanitizedName: String
     let localURL: String
-
-    static let proxyPort = 1355
 }
 
 /// Infers the project name from git, package.json, or directory name.
@@ -24,7 +22,8 @@ enum NameInferrer {
             name = sanitize(base)
         }
 
-        let url = "http://\(name).localhost:\(InferredProject.proxyPort)"
+        let portSuffix = UserDefaults.standard.bool(forKey: "standardPortsEnabled") ? "" : ":\(ProxyServer.boundPort)"
+        let url = "http://\(name).localhost\(portSuffix)"
         return InferredProject(name: name, sanitizedName: name, localURL: url)
     }
 
@@ -129,6 +128,7 @@ private extension String {
         guard Darwin.realpath(self, &buf) != nil else {
             throw CocoaError(.fileNoSuchFile)
         }
-        return String(cString: buf)
+        let end = buf.firstIndex(of: 0) ?? buf.endIndex
+        return String(decoding: buf[..<end].map(UInt8.init(bitPattern:)), as: UTF8.self)
     }
 }

@@ -13,13 +13,21 @@ EXECUTABLE_PATH=""
 
 mkdir -p "$BUILD_DIR" "$ROOT_DIR/.dist"
 
-# Build rack-bridge (Rust, native arch)
-CARGO_TARGET_DIR="$BUILD_DIR/rust" \
-  cargo build --release --manifest-path "$ROOT_DIR/Sources/rack-bridge/Cargo.toml"
-BRIDGE_PATH="$BUILD_DIR/rust/release/rack-bridge"
+# Build rack-bridge (Rust)
+if [[ "$(uname -m)" == "arm64" ]]; then
+  RUST_TARGET="aarch64-apple-darwin"
+else
+  RUST_TARGET="x86_64-apple-darwin"
+fi
+
+cargo build --release \
+  --manifest-path "$ROOT_DIR/Cargo.toml" \
+  --target-dir "$BUILD_DIR/rust" \
+  --target "$RUST_TARGET"
+RACK_BRIDGE_BIN="$BUILD_DIR/rust/$RUST_TARGET/release/rack-bridge"
 
 # Build Swift app
-swift build --configuration release --target Rack --scratch-path "$BUILD_DIR"
+swift build --configuration release --product Rack --scratch-path "$BUILD_DIR"
 
 if [[ -x "$BUILD_DIR/arm64-apple-macosx/release/Rack" ]]; then
   EXECUTABLE_PATH="$BUILD_DIR/arm64-apple-macosx/release/Rack"
@@ -38,7 +46,7 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$EXECUTABLE_PATH" "$MACOS_DIR/Rack"
 chmod +x "$MACOS_DIR/Rack"
 
-cp "$BRIDGE_PATH" "$RESOURCES_DIR/rack-bridge"
+cp "$RACK_BRIDGE_BIN" "$RESOURCES_DIR/rack-bridge"
 chmod +x "$RESOURCES_DIR/rack-bridge"
 
 cat > "$PLIST_PATH" <<'PLIST'
