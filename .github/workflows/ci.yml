@@ -25,10 +25,10 @@ jobs:
         run: swift package resolve
 
       - name: Build (debug)
-        run: swift build --target Rack --target rack
+        run: swift build --target Rack --target RackCLI
 
       - name: Build (release)
-        run: swift build -c release --target Rack --target rack
+        run: swift build -c release --target Rack --target RackCLI
 
   # ── Rust bridge ─────────────────────────────────────────────────────────
   rust:
