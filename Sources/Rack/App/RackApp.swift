@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let snapshot = RackCore.shared.command(#"{"type":"state.snapshot"}"#) {
             print("RackCore \(snapshot)")
         }
+        store.reloadFunctions()
 
         ipc.store = store
         ipc.start()

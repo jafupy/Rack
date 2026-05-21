@@ -5,6 +5,37 @@ import SwiftUI
 
 @MainActor
 final class ServerStore: ObservableObject {
+    struct FunctionSummary: Codable, Identifiable, Equatable {
+        struct Route: Codable, Identifiable, Equatable {
+            var id: String
+            var path: String
+            var method: String
+            var function: String
+        }
+
+        struct Cron: Codable, Identifiable, Equatable {
+            var id: String
+            var schedule: String
+            var function: String
+        }
+
+        var id: String { name }
+        var name: String
+        var version: String
+        var root: String
+        var routes: [Route]
+        var crons: [Cron]
+        var errors: [String]
+    }
+
+    private struct CoreSnapshotReply: Decodable {
+        struct Payload: Decodable {
+            var functions: [FunctionSummary]
+        }
+
+        var payload: Payload
+    }
+
     private enum AppPaths {
         static let appName = "Rack."
         static let temporaryDirectoryName = "Rack"
@@ -16,6 +47,7 @@ final class ServerStore: ObservableObject {
     }
 
     @Published var servers: [ServerConfiguration] = []
+    @Published private(set) var functions: [FunctionSummary] = []
     @Published var selectedServerID: ServerConfiguration.ID?
     @Published private(set) var statuses: [ServerConfiguration.ID: ServerStatus] = [:]
     @Published private(set) var logs: [ServerConfiguration.ID: String] = [:]
@@ -337,6 +369,18 @@ final class ServerStore: ObservableObject {
 
     func revealConfigurationFile() {
         NSWorkspace.shared.activateFileViewerSelecting([configurationURL])
+    }
+
+    func reloadFunctions() {
+        guard let json = RackCore.shared.command(#"{"type":"state.snapshot"}"#),
+              let data = json.data(using: .utf8),
+              let snapshot = try? decoder.decode(CoreSnapshotReply.self, from: data)
+        else {
+            functions = []
+            return
+        }
+
+        functions = snapshot.payload.functions
     }
 
     private func autoStartServers() {
