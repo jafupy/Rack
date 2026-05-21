@@ -6,6 +6,8 @@ dist/
 
 # Rust build output
 target/
+examples/*/functions.wasm
+examples/*/Cargo.lock
 
 # Swift build artifacts (spill from non-standard build roots)
 *.o

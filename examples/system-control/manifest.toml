@@ -1,0 +1,11 @@
+name = "system-control"
+version = "0.1.0"
+
+[route.snapshot]
+path = "/system"
+method = "GET"
+function = "system_snapshot"
+
+[cron.heartbeat]
+schedule = "every 5 minutes"
+function = "write_heartbeat"

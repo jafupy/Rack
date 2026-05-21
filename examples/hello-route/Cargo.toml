@@ -1,0 +1,16 @@
+[package]
+name = "rack-hello-route"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = true
+opt-level = "z"
+strip = true
+
+[workspace]
+
