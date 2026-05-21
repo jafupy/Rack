@@ -1,14 +1,15 @@
 use chrono::{DateTime, Datelike, Local, NaiveTime, TimeZone, Weekday};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{CStr, CString};
+use std::io::{Read, Write};
 use std::os::raw::{c_char, c_int, c_void};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex, OnceLock,
 };
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 type EventCallback = extern "C" fn(*const c_char, *mut c_void);
 
@@ -351,20 +352,19 @@ fn run_wasm_function(
         }
     };
 
-    if let Some(stdin) = child.stdin.as_mut() {
-        use std::io::Write;
+    if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(request.to_string().as_bytes());
     }
 
-    let output = match child.wait_with_output() {
+    let output = match wait_with_timeout(child, Duration::from_secs(30)) {
         Ok(output) => output,
-        Err(error) => {
+        Err(message) => {
             return serde_json::json!({
                 "type": response_type,
                 "payload": {
                     "status": 500,
                     "headers": { "content-type": "text/plain" },
-                    "body": format!("rack: function runtime failed: {error}")
+                    "body": format!("rack: function runtime failed: {message}")
                 }
             });
         }
@@ -390,6 +390,52 @@ fn run_wasm_function(
             "headers": { "content-type": "text/plain" },
             "body": body
         }
+    })
+}
+
+fn wait_with_timeout(mut child: std::process::Child, timeout: Duration) -> Result<Output, String> {
+    let stdout_reader = child.stdout.take().map(|mut stdout| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = stdout.read_to_end(&mut bytes);
+            bytes
+        })
+    });
+    let stderr_reader = child.stderr.take().map(|mut stderr| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = stderr.read_to_end(&mut bytes);
+            bytes
+        })
+    });
+
+    let started = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.map(|reader| reader.join());
+                let _ = stderr_reader.map(|reader| reader.join());
+                return Err(format!("timed out after {} seconds", timeout.as_secs()));
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+            Err(error) => return Err(error.to_string()),
+        }
+    };
+
+    let stdout = stdout_reader
+        .and_then(|reader| reader.join().ok())
+        .unwrap_or_default();
+    let stderr = stderr_reader
+        .and_then(|reader| reader.join().ok())
+        .unwrap_or_default();
+
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
     })
 }
 
@@ -548,6 +594,7 @@ fn next_calendar_after(
 fn start_scheduler(stop: Arc<AtomicBool>, callback: Option<EventCallback>, context: usize) {
     std::thread::spawn(move || {
         let mut next_runs: BTreeMap<String, DateTime<Local>> = BTreeMap::new();
+        let mut reported_invalid_schedules: BTreeSet<String> = BTreeSet::new();
 
         while !stop.load(Ordering::Relaxed) {
             let now = Local::now();
@@ -559,23 +606,28 @@ fn start_scheduler(stop: Arc<AtomicBool>, callback: Option<EventCallback>, conte
                 for cron in package.crons {
                     let key = format!("{}:{}", cron.package, cron.id);
                     let schedule = match parse_schedule(&cron.schedule) {
-                        Ok(schedule) => schedule,
+                        Ok(schedule) => {
+                            reported_invalid_schedules.remove(&key);
+                            schedule
+                        }
                         Err(message) => {
-                            if let Some(callback) = callback {
-                                emit(
-                                    callback,
-                                    context,
-                                    &serde_json::json!({
-                                        "type": "cron.error",
-                                        "payload": {
-                                            "package": cron.package,
-                                            "id": cron.id,
-                                            "schedule": cron.schedule,
-                                            "error": message,
-                                        }
-                                    })
-                                    .to_string(),
-                                );
+                            if reported_invalid_schedules.insert(key.clone()) {
+                                if let Some(callback) = callback {
+                                    emit(
+                                        callback,
+                                        context,
+                                        &serde_json::json!({
+                                            "type": "cron.error",
+                                            "payload": {
+                                                "package": cron.package,
+                                                "id": cron.id,
+                                                "schedule": cron.schedule,
+                                                "error": message,
+                                            }
+                                        })
+                                        .to_string(),
+                                    );
+                                }
                             }
                             continue;
                         }

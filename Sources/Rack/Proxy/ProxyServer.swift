@@ -1,4 +1,5 @@
 import Foundation
+import Dispatch
 @preconcurrency import NIOCore
 import NIOPosix
 @preconcurrency import NIOHTTP1
@@ -297,6 +298,52 @@ private func rackHostname(from host: String?) -> String? {
     return host.split(separator: ":", maxSplits: 1).first.map { String($0).lowercased() }
 }
 
+private enum RackLocalFunctionError: Error {
+    case invalidResponse
+}
+
+private struct RackLocalFunctionResponse: Sendable {
+    var statusCode: Int
+    var headers: [String: String]
+    var body: String
+}
+
+private struct RackLocalResponseContext: @unchecked Sendable {
+    var context: ChannelHandlerContext
+}
+
+private final class RackLocalFunctionThreadLimiter: @unchecked Sendable {
+    static let shared = RackLocalFunctionThreadLimiter()
+
+    private let condition = NSCondition()
+    private var activeCount = 0
+
+    private var maxThreads: Int {
+        let configured = UserDefaults.standard.integer(forKey: "functionWorkerLimit")
+        return min(max(configured == 0 ? 4 : configured, 1), 32)
+    }
+
+    private init() {}
+
+    func run<T>(_ work: () -> T) -> T {
+        condition.lock()
+        while activeCount >= maxThreads {
+            condition.wait()
+        }
+        activeCount += 1
+        condition.unlock()
+
+        defer {
+            condition.lock()
+            activeCount -= 1
+            condition.broadcast()
+            condition.unlock()
+        }
+
+        return work()
+    }
+}
+
 // MARK: - WebSocket tunnel
 
 private enum WebSocketBackendConnector {
@@ -565,21 +612,37 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: request),
-              let command = String(data: data, encoding: .utf8),
-              let responseJSON = rackCoreCommand(command),
-              let responseData = responseJSON.data(using: .utf8),
-              let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
-              let payload = response["payload"] as? [String: Any]
+              let command = String(data: data, encoding: .utf8)
         else {
             sendError(context: context, status: .internalServerError, body: "rack: function dispatch failed")
             return
         }
 
-        let statusCode = payload["status"] as? Int ?? 500
-        let status = HTTPResponseStatus(statusCode: statusCode)
-        let headers = payload["headers"] as? [String: String] ?? ["content-type": "text/plain"]
-        let responseBody = payload["body"] as? String ?? ""
-        sendPlainResponse(context: context, status: status, body: responseBody, headers: headers)
+        let responseContext = RackLocalResponseContext(context: context)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = RackLocalFunctionThreadLimiter.shared.run {
+                self.dispatchRackLocalFunction(command)
+            }
+            responseContext.context.eventLoop.execute {
+                switch result {
+                case .success(let response):
+                    let status = HTTPResponseStatus(statusCode: response.statusCode)
+                    self.sendPlainResponse(
+                        context: responseContext.context,
+                        status: status,
+                        body: response.body,
+                        headers: response.headers
+                    )
+
+                case .failure:
+                    self.sendError(
+                        context: responseContext.context,
+                        status: .internalServerError,
+                        body: "rack: function dispatch failed"
+                    )
+                }
+            }
+        }
     }
 
     private func isLoopback(_ host: String?) -> Bool {
@@ -682,6 +745,22 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
         guard let response = rack_core_command(json) else { return nil }
         defer { rack_core_free_string(response) }
         return String(cString: response)
+    }
+
+    private func dispatchRackLocalFunction(_ command: String) -> Result<RackLocalFunctionResponse, RackLocalFunctionError> {
+        guard let responseJSON = rackCoreCommand(command),
+              let responseData = responseJSON.data(using: .utf8),
+              let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+              let payload = response["payload"] as? [String: Any]
+        else {
+            return .failure(RackLocalFunctionError.invalidResponse)
+        }
+
+        return .success(RackLocalFunctionResponse(
+            statusCode: payload["status"] as? Int ?? 500,
+            headers: payload["headers"] as? [String: String] ?? ["content-type": "text/plain"],
+            body: payload["body"] as? String ?? ""
+        ))
     }
 
     private func requestHeaders(from headers: HTTPHeaders) -> [String: String] {

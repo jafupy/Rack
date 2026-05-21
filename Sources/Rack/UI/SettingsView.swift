@@ -140,6 +140,7 @@ struct SettingsView: View {
 @MainActor
 private struct FunctionsSettingsView: View {
   @EnvironmentObject private var store: ServerStore
+  @AppStorage("functionWorkerLimit") private var functionWorkerLimit = 4
 
   var body: some View {
     VStack(spacing: 0) {
@@ -159,6 +160,16 @@ private struct FunctionsSettingsView: View {
       .background(.bar)
 
       List {
+        Section {
+          Stepper(value: $functionWorkerLimit, in: 1...32) {
+            LabeledContent("Max Threads", value: "\(functionWorkerLimit)")
+          }
+        } header: {
+          Label("Runtime", systemImage: "cpu")
+        } footer: {
+          Text("Maximum concurrent rack.local function workers.")
+        }
+
         if store.functions.isEmpty {
           ContentUnavailableView("No Functions", systemImage: "function", description: Text("Install one with rack function <path>."))
         } else {
