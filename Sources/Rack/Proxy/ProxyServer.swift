@@ -1,9 +1,11 @@
 import Foundation
+import Dispatch
 @preconcurrency import NIOCore
 import NIOPosix
 @preconcurrency import NIOHTTP1
 @preconcurrency import NIOWebSocket
 @preconcurrency import NIOSSL
+import RackCoreFFI
 
 /// HTTP/1.1 reverse proxy that routes *.localhost to unix sockets.
 /// Runs inside Rack.app — no external daemon, no Node.
@@ -278,6 +280,10 @@ private func rackRoute(for host: String?) -> Route? {
     return RouteRegistry.shared.route(for: name)
 }
 
+private func isRackLocalHost(_ host: String?) -> Bool {
+    rackHostname(from: host) == "rack.local"
+}
+
 private func rackRouteName(from host: String?) -> String? {
     guard let hostname = rackHostname(from: host), hostname.hasSuffix(".localhost") else { return nil }
     let name = String(hostname.dropLast(".localhost".count))
@@ -290,6 +296,52 @@ private func rackHostname(from host: String?) -> String? {
         return host.dropFirst().split(separator: "]", maxSplits: 1).first.map { String($0).lowercased() }
     }
     return host.split(separator: ":", maxSplits: 1).first.map { String($0).lowercased() }
+}
+
+private enum RackLocalFunctionError: Error {
+    case invalidResponse
+}
+
+private struct RackLocalFunctionResponse: Sendable {
+    var statusCode: Int
+    var headers: [String: String]
+    var body: String
+}
+
+private struct RackLocalResponseContext: @unchecked Sendable {
+    var context: ChannelHandlerContext
+}
+
+private final class RackLocalFunctionThreadLimiter: @unchecked Sendable {
+    static let shared = RackLocalFunctionThreadLimiter()
+
+    private let condition = NSCondition()
+    private var activeCount = 0
+
+    private var maxThreads: Int {
+        let configured = UserDefaults.standard.integer(forKey: "functionWorkerLimit")
+        return min(max(configured == 0 ? 4 : configured, 1), 32)
+    }
+
+    private init() {}
+
+    func run<T>(_ work: () -> T) -> T {
+        condition.lock()
+        while activeCount >= maxThreads {
+            condition.wait()
+        }
+        activeCount += 1
+        condition.unlock()
+
+        defer {
+            condition.lock()
+            activeCount -= 1
+            condition.broadcast()
+            condition.unlock()
+        }
+
+        return work()
+    }
 }
 
 // MARK: - WebSocket tunnel
@@ -472,11 +524,17 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
     private var bodyBuffer: ByteBuffer?
     private var pendingEnd: HTTPHeaders?
     private var backendChannel: (any Channel)?
+    private var rackLocalHead: HTTPRequestHead?
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         switch unwrapInboundIn(data) {
         case .head(let head):
             pendingHead = head
+            if isRackLocalHost(head.headers["host"].first) {
+                rackLocalHead = head
+                return
+            }
+
             guard resolve(host: head.headers["host"].first) != nil else {
                 sendError(context: context, status: .badGateway,
                           body: "rack: no route for \(head.headers["host"].first ?? "unknown")")
@@ -499,6 +557,12 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
             }
 
         case .end(let trailers):
+            if let rackLocalHead {
+                pendingEnd = trailers
+                handleRackLocal(context: context, head: rackLocalHead)
+                return
+            }
+
             if let backend = backendChannel {
                 writeBackend(backend, .end(trailers), flush: true)
             } else {
@@ -516,6 +580,69 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
 
     private func resolve(host: String?) -> Route? {
         rackRoute(for: host)
+    }
+
+    private func handleRackLocal(context: ChannelHandlerContext, head: HTTPRequestHead) {
+        let path = normalizeRackLocalPath(head.uri)
+        if path == "/" {
+            sendPlainResponse(
+                context: context,
+                status: .ok,
+                body: "Rack.\n",
+                headers: ["content-type": "text/plain"]
+            )
+            return
+        }
+
+        if path.starts(with: "/_") {
+            sendError(context: context, status: .notFound, body: "rack: reserved path")
+            return
+        }
+
+        let body = bodyBuffer.map { String(buffer: $0) } ?? ""
+        let request: [String: Any] = [
+            "type": "function.http",
+            "payload": [
+                "method": head.method.rawValue,
+                "path": path,
+                "uri": head.uri,
+                "headers": requestHeaders(from: head.headers),
+                "body": body,
+            ],
+        ]
+
+        guard let data = try? JSONSerialization.data(withJSONObject: request),
+              let command = String(data: data, encoding: .utf8)
+        else {
+            sendError(context: context, status: .internalServerError, body: "rack: function dispatch failed")
+            return
+        }
+
+        let responseContext = RackLocalResponseContext(context: context)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = RackLocalFunctionThreadLimiter.shared.run {
+                self.dispatchRackLocalFunction(command)
+            }
+            responseContext.context.eventLoop.execute {
+                switch result {
+                case .success(let response):
+                    let status = HTTPResponseStatus(statusCode: response.statusCode)
+                    self.sendPlainResponse(
+                        context: responseContext.context,
+                        status: status,
+                        body: response.body,
+                        headers: response.headers
+                    )
+
+                case .failure:
+                    self.sendError(
+                        context: responseContext.context,
+                        status: .internalServerError,
+                        body: "rack: function dispatch failed"
+                    )
+                }
+            }
+        }
     }
 
     private func isLoopback(_ host: String?) -> Bool {
@@ -605,14 +732,74 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
         }
     }
 
+    private func normalizeRackLocalPath(_ uri: String) -> String {
+        let rawPath = uri.split(separator: "?", maxSplits: 1).first.map(String.init) ?? "/"
+        var normalized = rawPath.hasPrefix("/") ? rawPath : "/\(rawPath)"
+        while normalized.count > 1, normalized.last == "/" {
+            normalized.removeLast()
+        }
+        return normalized
+    }
+
+    private func rackCoreCommand(_ json: String) -> String? {
+        guard let response = rack_core_command(json) else { return nil }
+        defer { rack_core_free_string(response) }
+        return String(cString: response)
+    }
+
+    private func dispatchRackLocalFunction(_ command: String) -> Result<RackLocalFunctionResponse, RackLocalFunctionError> {
+        guard let responseJSON = rackCoreCommand(command),
+              let responseData = responseJSON.data(using: .utf8),
+              let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+              let payload = response["payload"] as? [String: Any]
+        else {
+            return .failure(RackLocalFunctionError.invalidResponse)
+        }
+
+        return .success(RackLocalFunctionResponse(
+            statusCode: payload["status"] as? Int ?? 500,
+            headers: payload["headers"] as? [String: String] ?? ["content-type": "text/plain"],
+            body: payload["body"] as? String ?? ""
+        ))
+    }
+
+    private func requestHeaders(from headers: HTTPHeaders) -> [String: String] {
+        var result: [String: String] = [:]
+        for header in headers {
+            let name = header.name.lowercased()
+            if let existing = result[name] {
+                result[name] = "\(existing), \(header.value)"
+            } else {
+                result[name] = header.value
+            }
+        }
+        return result
+    }
+
     private func sendError(context: ChannelHandlerContext, status: HTTPResponseStatus, body: String) {
+        sendPlainResponse(
+            context: context,
+            status: status,
+            body: body,
+            headers: ["content-type": "text/plain"]
+        )
+    }
+
+    private func sendPlainResponse(
+        context: ChannelHandlerContext,
+        status: HTTPResponseStatus,
+        body: String,
+        headers extraHeaders: [String: String]
+    ) {
         var buf = context.channel.allocator.buffer(capacity: body.utf8.count)
         buf.writeString(body)
-        let head = HTTPResponseHead(version: .http1_1, status: status, headers: [
-            "content-type": "text/plain",
-            "content-length": "\(body.utf8.count)",
-            "connection": "close",
-        ])
+        var headers = HTTPHeaders()
+        for (name, value) in extraHeaders {
+            headers.replaceOrAdd(name: name, value: value)
+        }
+        headers.replaceOrAdd(name: "content-length", value: "\(body.utf8.count)")
+        headers.replaceOrAdd(name: "connection", value: "close")
+        let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
         context.write(wrapOutboundOut(.head(head)), promise: nil)
         context.write(wrapOutboundOut(.body(.byteBuffer(buf))), promise: nil)
         context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in

@@ -3,6 +3,7 @@ import SwiftUI
 
 private enum SidebarItem: Hashable {
   case general
+  case functions
   case server(UUID)
 }
 
@@ -26,6 +27,9 @@ struct SettingsView: View {
         GeneralSettingsView()
           .environmentObject(store)
           .environmentObject(launchAtLogin)
+      case .functions:
+        FunctionsSettingsView()
+          .environmentObject(store)
       case .server:
         if let selectedServer = store.selectedServer {
           ServerEditorView(server: selectedServer)
@@ -40,7 +44,7 @@ struct SettingsView: View {
     .onChange(of: selection) { _, newValue in
       if case .server(let id) = newValue {
         store.selectedServerID = id
-      } else {
+      } else if newValue != .functions {
         store.selectedServerID = nil
       }
     }
@@ -55,6 +59,9 @@ struct SettingsView: View {
       List(selection: $selection) {
         Label("General", systemImage: "gear")
           .tag(SidebarItem.general)
+
+        Label("Functions", systemImage: "function")
+          .tag(SidebarItem.functions)
 
         Section {
           if store.servers.isEmpty {
@@ -126,6 +133,73 @@ struct SettingsView: View {
     } actions: {
       Button("Add Server") { store.addServer() }
         .buttonStyle(.borderedProminent)
+    }
+  }
+}
+
+@MainActor
+private struct FunctionsSettingsView: View {
+  @EnvironmentObject private var store: ServerStore
+  @AppStorage("functionWorkerLimit") private var functionWorkerLimit = 4
+
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack {
+        Text("Functions")
+          .font(.system(size: 15, weight: .semibold))
+        Spacer()
+        Button {
+          store.reloadFunctions()
+        } label: {
+          Label("Reload", systemImage: "arrow.clockwise")
+        }
+        .buttonStyle(.bordered)
+      }
+      .padding(.horizontal, 24)
+      .padding(.vertical, 14)
+      .background(.bar)
+
+      List {
+        Section {
+          Stepper(value: $functionWorkerLimit, in: 1...32) {
+            LabeledContent("Max Threads", value: "\(functionWorkerLimit)")
+          }
+        } header: {
+          Label("Runtime", systemImage: "cpu")
+        } footer: {
+          Text("Maximum concurrent rack.local function workers.")
+        }
+
+        if store.functions.isEmpty {
+          ContentUnavailableView("No Functions", systemImage: "function", description: Text("Install one with rack function <path>."))
+        } else {
+          ForEach(store.functions) { function in
+            Section {
+              ForEach(function.routes) { route in
+                LabeledContent("\(route.method) rack.local\(route.path)", value: route.function)
+                  .fontDesign(.monospaced)
+              }
+              ForEach(function.crons) { cron in
+                LabeledContent(cron.schedule, value: cron.function)
+                  .fontDesign(.monospaced)
+              }
+              ForEach(function.errors, id: \.self) { error in
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                  .foregroundStyle(.orange)
+              }
+            } header: {
+              Text("\(function.name) \(function.version)")
+            } footer: {
+              Text(function.root)
+            }
+          }
+        }
+      }
+      .listStyle(.inset)
+    }
+    .background(.windowBackground)
+    .onAppear {
+      store.reloadFunctions()
     }
   }
 }

@@ -242,6 +242,62 @@ func cmdRemove(_ name: String) throws {
     print("✓ removed \(name)")
 }
 
+func cmdFunction(_ path: String?) throws {
+    let source = URL(fileURLWithPath: path ?? FileManager.default.currentDirectoryPath)
+        .standardizedFileURL
+
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: source.path, isDirectory: &isDirectory),
+          isDirectory.boolValue else {
+        throw CLIError("function path is not a directory: \(source.path)")
+    }
+
+    let manifestURL = source.appending(path: "manifest.toml")
+    let wasmURL = source.appending(path: "functions.wasm")
+    guard FileManager.default.fileExists(atPath: manifestURL.path) else {
+        throw CLIError("missing manifest.toml")
+    }
+    guard FileManager.default.fileExists(atPath: wasmURL.path) else {
+        throw CLIError("missing functions.wasm")
+    }
+
+    let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
+    guard let name = manifestName(from: manifest), !name.isEmpty else {
+        throw CLIError("manifest.toml must include name = \"...\"")
+    }
+
+    let functionsDir = FileManager.default.homeDirectoryForCurrentUser
+        .appending(path: ".rack/functions")
+    let destination = functionsDir.appending(path: name)
+    guard !FileManager.default.fileExists(atPath: destination.path) else {
+        throw CLIError("function '\(name)' is already installed")
+    }
+
+    try FileManager.default.createDirectory(at: functionsDir, withIntermediateDirectories: true)
+    try FileManager.default.moveItem(at: source, to: destination)
+    try FileManager.default.createSymbolicLink(at: source, withDestinationURL: destination)
+
+    print("✓ installed \(name)")
+    print("  \(destination.path)")
+    print("  \(source.path) -> \(destination.path)")
+}
+
+func manifestName(from manifest: String) -> String? {
+    for rawLine in manifest.components(separatedBy: "\n") {
+        let line = rawLine.split(separator: "#", maxSplits: 1).first.map(String.init)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard line.hasPrefix("name") else { continue }
+        let parts = line.split(separator: "=", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { continue }
+        let value = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 {
+            return String(value.dropFirst().dropLast())
+        }
+        return value
+    }
+    return nil
+}
+
 // MARK: - Entry point
 
 struct CLIError: Error, CustomStringConvertible {
@@ -266,10 +322,13 @@ do {
     case "rm", "remove":
         guard let name = args.dropFirst().first else { throw CLIError("Usage: rack rm <name>") }
         try cmdRemove(name)
+    case "function":
+        try cmdFunction(args.dropFirst().first.map { String($0) })
     default:
         print("rack — dev environment manager")
         print("")
         print("  rack dev              Register this directory with Rack.app")
+        print("  rack function [path]  Install a local Rack function")
         print("  rack ls               List registered servers")
         print("  rack start <name>     Start a server")
         print("  rack stop <name>      Stop a server")

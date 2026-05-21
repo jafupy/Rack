@@ -14,10 +14,38 @@ struct MenuBarContentView: View {
       header
       Divider()
       serverList
+      if !store.functions.isEmpty {
+        Divider()
+        functionList
+      }
       Divider()
       footer
     }
     .frame(width: 340)
+  }
+
+  private var functionList: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Label("Functions", systemImage: "function")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(.secondary)
+        Spacer()
+        Button {
+          store.reloadFunctions()
+        } label: {
+          Image(systemName: "arrow.clockwise")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+      }
+
+      ForEach(store.functions.prefix(4)) { function in
+        FunctionMenuRow(function: function)
+      }
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
   }
 
   private var header: some View {
@@ -107,6 +135,40 @@ struct MenuBarContentView: View {
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 8)
+  }
+}
+
+@MainActor
+private struct FunctionMenuRow: View {
+  let function: ServerStore.FunctionSummary
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack {
+        Text(function.name)
+          .font(.system(size: 12, weight: .medium))
+          .lineLimit(1)
+        Spacer()
+        if !function.errors.isEmpty {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundStyle(.orange)
+        }
+      }
+
+      ForEach(function.routes.prefix(2)) { route in
+        Text("\(route.method) rack.local\(route.path)")
+          .font(.system(size: 10, design: .monospaced))
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
+
+      ForEach(function.crons.prefix(2)) { cron in
+        Text("\(cron.schedule) -> \(cron.function)")
+          .font(.system(size: 10, design: .monospaced))
+          .foregroundStyle(.tertiary)
+          .lineLimit(1)
+      }
+    }
   }
 }
 
