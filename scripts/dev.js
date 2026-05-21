@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 
 const BUILD_SCRIPT = resolve(__dirname, "build-app.sh");
-const APP_PATH = resolve(root, "dist/Rack");
+const APP_PATH = resolve(root, "dist/Rack.app");
 const WATCH_DIR = resolve(root, "Sources");
 
 let building = false;
