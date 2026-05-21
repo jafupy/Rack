@@ -1,6 +1,12 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+#if arch(arm64)
+let rustCoreSearchPath = ".build/rust/aarch64-apple-darwin/release"
+#else
+let rustCoreSearchPath = ".build/rust/x86_64-apple-darwin/release"
+#endif
+
 let package = Package(
     name: "Rack",
     platforms: [
@@ -18,6 +24,7 @@ let package = Package(
         .executableTarget(
             name: "Rack",
             dependencies: [
+                "RackCoreFFI",
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
@@ -29,7 +36,18 @@ let package = Package(
             resources: [
                 .copy("Plugins"),
                 .copy("PackageInfo.json"),
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L", rustCoreSearchPath,
+                    "-lrack_core",
+                ])
             ]
+        ),
+        .target(
+            name: "RackCoreFFI",
+            path: "Sources/RackCoreFFI",
+            publicHeadersPath: "include"
         ),
         .executableTarget(
             name: "RackCLI",

@@ -8,6 +8,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let ipc = IPCServer()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        RackCore.shared.start { event in
+            print("RackCore \(event)")
+        }
+        if let snapshot = RackCore.shared.command(#"{"type":"state.snapshot"}"#) {
+            print("RackCore \(snapshot)")
+        }
+
         ipc.store = store
         ipc.start()
         Task {
@@ -21,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        RackCore.shared.stop()
         store.stopAllServers()
     }
 }
