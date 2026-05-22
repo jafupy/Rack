@@ -1,0 +1,8 @@
+name = "hello-route"
+version = "0.1.0"
+
+[route.hello]
+path = "/hello"
+method = "GET"
+function = "hello"
+

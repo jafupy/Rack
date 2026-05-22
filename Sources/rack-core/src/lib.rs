@@ -1,5 +1,6 @@
 use chrono::{DateTime, Datelike, Local, NaiveTime, TimeZone, Weekday};
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsString;
 use std::ffi::{CStr, CString};
 use std::io::{Read, Write};
 use std::os::raw::{c_char, c_int, c_void};
@@ -329,16 +330,20 @@ fn run_wasm_function(
         });
     };
 
-    let mut child = match Command::new(runtime)
+    let mut command = Command::new(runtime);
+    command
         .arg("run")
+        .arg("--dir")
+        .arg("/::/")
+        .args(wasi_env_args())
         .arg("--invoke")
         .arg(function)
         .arg(wasm_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+        .stderr(Stdio::piped());
+
+    let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
             return serde_json::json!({
@@ -391,6 +396,18 @@ fn run_wasm_function(
             "body": body
         }
     })
+}
+
+fn wasi_env_args() -> Vec<OsString> {
+    let mut args = Vec::new();
+    for (key, value) in std::env::vars_os() {
+        let mut env = key;
+        env.push("=");
+        env.push(value);
+        args.push(OsString::from("--env"));
+        args.push(env);
+    }
+    args
 }
 
 fn wait_with_timeout(mut child: std::process::Child, timeout: Duration) -> Result<Output, String> {

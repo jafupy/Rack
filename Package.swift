@@ -34,7 +34,6 @@ let package = Package(
             path: "Sources/Rack",
             exclude: ["d.md"],
             resources: [
-                .copy("Plugins"),
                 .copy("PackageInfo.json"),
             ],
             linkerSettings: [

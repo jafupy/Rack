@@ -4,14 +4,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/.build"
+DIST_DIR="$ROOT_DIR/dist"
 RELEASE_DIR="$BUILD_DIR/release"
-APP_DIR="$ROOT_DIR/.dist/Rack.app"
+APP_DIR="$DIST_DIR/Rack.app"
 MACOS_DIR="$APP_DIR/Contents/MacOS"
 RESOURCES_DIR="$APP_DIR/Contents/Resources"
 PLIST_PATH="$APP_DIR/Contents/Info.plist"
 EXECUTABLE_PATH=""
 
-mkdir -p "$BUILD_DIR" "$ROOT_DIR/.dist"
+mkdir -p "$BUILD_DIR" "$DIST_DIR"
 
 # Build rack-bridge (Rust)
 if [[ "$(uname -m)" == "arm64" ]]; then
