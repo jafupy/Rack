@@ -28,6 +28,14 @@ That writes the bundled app to:
 dist/Rack.app
 ```
 
+On launch, `Rack.app` installs the bundled `rack` CLI at:
+
+```text
+~/.local/bin/rack
+```
+
+and adds `~/.local/bin` to zsh's PATH through `~/.zprofile` if needed.
+
 ## Build a `.dmg`
 
 ```bash

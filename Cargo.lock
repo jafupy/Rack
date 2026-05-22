@@ -217,6 +217,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rack-cli"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "rack-core"
 version = "0.1.0"
 dependencies = [

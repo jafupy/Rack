@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "Sources/rack-bridge",
+    "Sources/rack-cli-rs",
     "Sources/rack-core",
 ]
 resolver = "2"

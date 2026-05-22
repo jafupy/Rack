@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let ipc = IPCServer()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        CLIInstaller.installBundledCLI()
+
         RackCore.shared.start { event in
             print("RackCore \(event)")
         }
