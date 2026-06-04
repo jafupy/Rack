@@ -36,26 +36,32 @@ jobs:
             .build/rust/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      # Build rack-bridge as a universal binary
-      - name: Build rack-bridge (universal)
+      # Build Rust tools as universal binaries, and rack-core for Swift linking.
+      - name: Build Rust tools
         run: |
-          cargo build --release --target aarch64-apple-darwin --manifest-path Sources/rack-bridge/Cargo.toml
-          cargo build --release --target x86_64-apple-darwin --manifest-path Sources/rack-bridge/Cargo.toml
+          cargo build --release --target aarch64-apple-darwin --manifest-path Cargo.toml
+          cargo build --release --target x86_64-apple-darwin --manifest-path Cargo.toml
+
           lipo -create \
             .build/rust/aarch64-apple-darwin/release/rack-bridge \
             .build/rust/x86_64-apple-darwin/release/rack-bridge \
             -output .build/rack-bridge-universal
 
+          lipo -create \
+            .build/rust/aarch64-apple-darwin/release/rack \
+            .build/rust/x86_64-apple-darwin/release/rack \
+            -output .build/rack-universal
+
       # Build Swift release binaries
       - name: Build Swift (release)
-        run: swift build -c release --target Rack --target rack
+        run: swift build -c release --target Rack
 
       # Package everything
       - name: Package
         run: |
           TAG=${GITHUB_REF_NAME}
           mkdir -p .dist/rack-${TAG}
-          cp .build/release/rack .dist/rack-${TAG}/rack
+          cp .build/rack-universal .dist/rack-${TAG}/rack
           cp .build/rack-bridge-universal .dist/rack-${TAG}/rack-bridge
           cp README.md .dist/rack-${TAG}/ 2>/dev/null || true
           cd .dist && tar -czf rack-${TAG}-macos.tar.gz rack-${TAG}/

@@ -13,6 +13,8 @@ final class ProxyServer: @unchecked Sendable {
     static let defaultPort = 1355
     static let defaultTLSPort = 1443
     private static let daemonPath = "/Library/LaunchDaemons/com.jafupy.Rack.portfwd.plist"
+    private static let hostsBeginMarker = "# Rack.app rack.local begin"
+    private static let hostsEndMarker = "# Rack.app rack.local end"
 
     // Set after start() binds. Read by Models.localURL and NameInferrer.
     static nonisolated(unsafe) var boundPort: Int = defaultPort
@@ -64,10 +66,13 @@ final class ProxyServer: @unchecked Sendable {
             print("RackProxy HTTPS listener disabled: \(error)")
         }
 
-        // Sync the UserDefaults "standard ports" flag with the actual daemon file on disk.
-        // The file persists across reboots; UserDefaults might have drifted.
+        // Sync the UserDefaults "standard ports" flag with the actual files on disk.
+        // Old installs may have the daemon but not the rack.local hosts entry.
         let daemonExists = FileManager.default.fileExists(atPath: ProxyServer.daemonPath)
-        UserDefaults.standard.set(daemonExists, forKey: "standardPortsEnabled")
+        UserDefaults.standard.set(
+            daemonExists && Self.hasRackLocalHostsEntry(),
+            forKey: "standardPortsEnabled"
+        )
     }
 
     private func makeBootstrap(tlsContext: NIOSSLContext? = nil) -> ServerBootstrap {
@@ -150,8 +155,8 @@ final class ProxyServer: @unchecked Sendable {
         }
 
         let rules = """
-            rdr pass on lo0 proto tcp from any to any port 80 -> 127.0.0.1 port \(defaultPort)
-            rdr pass on lo0 proto tcp from any to any port 443 -> 127.0.0.1 port \(defaultTLSPort)
+            rdr pass on lo0 proto tcp from any to any port 80 -> 127.0.0.1 port \(boundPort)
+            rdr pass on lo0 proto tcp from any to any port 443 -> 127.0.0.1 port \(boundTLSPort)
             """
         let pfCommand = rules
             .split(separator: "\n")
@@ -183,9 +188,37 @@ final class ProxyServer: @unchecked Sendable {
         }
 
         let escapedCertPath = shellEscape(certPath)
-        // Install daemon AND apply the rule immediately — no reboot required.
+        let scriptPath = "/tmp/com.jafupy.Rack.portfwd.sh"
+        let setupScript = """
+            set -e
+            cp '\(tmpPath)' '\(daemonPath)'
+            launchctl bootstrap system '\(daemonPath)' 2>/dev/null || true
+            /usr/bin/security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain \(escapedCertPath) 2>/dev/null || true
+            tmp_hosts="$(mktemp)"
+            /usr/bin/awk '
+              $0 == "\(hostsBeginMarker)" { skip = 1; next }
+              $0 == "\(hostsEndMarker)" { skip = 0; next }
+              skip != 1 { print }
+            ' /etc/hosts > "$tmp_hosts"
+            cat >> "$tmp_hosts" <<'RACK_HOSTS'
+            \(hostsBeginMarker)
+            127.0.0.1 rack.local
+            ::1 rack.local
+            \(hostsEndMarker)
+            RACK_HOSTS
+            cp "$tmp_hosts" /etc/hosts
+            rm -f "$tmp_hosts"
+            /usr/bin/dscacheutil -flushcache 2>/dev/null || true
+            /usr/bin/killall -HUP mDNSResponder 2>/dev/null || true
+            printf '%s\\n' \(pfCommand) | /sbin/pfctl -a com.apple/rack -f -
+            """
+        guard (try? setupScript.write(toFile: scriptPath, atomically: true, encoding: .utf8)) != nil else {
+            return false
+        }
+
+        // Install daemon, trust the local cert, add rack.local DNS, and apply pf immediately.
         let script = """
-            do shell script "cp '\(tmpPath)' '\(daemonPath)' && launchctl bootstrap system '\(daemonPath)' 2>/dev/null || true; /usr/bin/security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain \(escapedCertPath) 2>/dev/null || true; printf '%s\\n' \(pfCommand) | /sbin/pfctl -a com.apple/rack -f -" with administrator privileges
+            do shell script "/bin/sh \(shellEscape(scriptPath))" with administrator privileges
             """
         var error: NSDictionary?
         NSAppleScript(source: script)?.executeAndReturnError(&error)
@@ -197,8 +230,30 @@ final class ProxyServer: @unchecked Sendable {
 
     /// Removes the port forwarding LaunchDaemon and immediately flushes the pf anchor.
     static func teardownPortForwarding() {
+        let scriptPath = "/tmp/com.jafupy.Rack.portfwd-teardown.sh"
+        let teardownScript = """
+            launchctl bootout system '\(daemonPath)' 2>/dev/null || true
+            /sbin/pfctl -a com.apple/rack -F all 2>/dev/null || true
+            rm -f '\(daemonPath)'
+            tmp_hosts="$(mktemp)"
+            /usr/bin/awk '
+              $0 == "\(hostsBeginMarker)" { skip = 1; next }
+              $0 == "\(hostsEndMarker)" { skip = 0; next }
+              skip != 1 { print }
+            ' /etc/hosts > "$tmp_hosts"
+            cp "$tmp_hosts" /etc/hosts
+            rm -f "$tmp_hosts"
+            /usr/bin/dscacheutil -flushcache 2>/dev/null || true
+            /usr/bin/killall -HUP mDNSResponder 2>/dev/null || true
+            true
+            """
+        guard (try? teardownScript.write(toFile: scriptPath, atomically: true, encoding: .utf8)) != nil else {
+            UserDefaults.standard.set(false, forKey: "standardPortsEnabled")
+            return
+        }
+
         let script = """
-            do shell script "launchctl bootout system '\(daemonPath)' 2>/dev/null; /sbin/pfctl -a com.apple/rack -F all 2>/dev/null; rm -f '\(daemonPath)'; true" with administrator privileges
+            do shell script "/bin/sh \(shellEscape(scriptPath))" with administrator privileges
             """
         var error: NSDictionary?
         NSAppleScript(source: script)?.executeAndReturnError(&error)
@@ -207,6 +262,17 @@ final class ProxyServer: @unchecked Sendable {
 
     private static func shellEscape(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+
+    private static func hasRackLocalHostsEntry() -> Bool {
+        guard let hosts = try? String(contentsOfFile: "/etc/hosts", encoding: .utf8) else {
+            return false
+        }
+
+        return hosts.contains(hostsBeginMarker)
+            && hosts.contains("127.0.0.1 rack.local")
+            && hosts.contains("::1 rack.local")
+            && hosts.contains(hostsEndMarker)
     }
 
     private enum TLSCertificateError: Error {
@@ -229,21 +295,21 @@ final class ProxyServer: @unchecked Sendable {
             .appending(path: ".config/rack/tls")
         try FileManager.default.createDirectory(at: tlsDir, withIntermediateDirectories: true)
 
-        let certPath = tlsDir.appending(path: "localhost.pem").path
-        let keyPath = tlsDir.appending(path: "localhost-key.pem").path
+        let certPath = tlsDir.appending(path: "rack-local.pem").path
+        let keyPath = tlsDir.appending(path: "rack-local-key.pem").path
         if FileManager.default.fileExists(atPath: certPath),
            FileManager.default.fileExists(atPath: keyPath) {
             return (certPath, keyPath)
         }
 
-        let configPath = tlsDir.appending(path: "localhost-openssl.cnf").path
+        let configPath = tlsDir.appending(path: "rack-local-openssl.cnf").path
         let config = """
             [req]
             distinguished_name=req_distinguished_name
             x509_extensions=v3_req
             prompt=no
             [req_distinguished_name]
-            CN=*.localhost
+            CN=rack.local
             [v3_req]
             keyUsage=critical,digitalSignature,keyEncipherment
             extendedKeyUsage=serverAuth
@@ -251,6 +317,7 @@ final class ProxyServer: @unchecked Sendable {
             [alt_names]
             DNS.1=localhost
             DNS.2=*.localhost
+            DNS.3=rack.local
             """
         try config.write(toFile: configPath, atomically: true, encoding: .utf8)
 
@@ -281,7 +348,11 @@ private func rackRoute(for host: String?) -> Route? {
 }
 
 private func isRackLocalHost(_ host: String?) -> Bool {
-    rackHostname(from: host) == "rack.local"
+    guard let hostname = rackHostname(from: host) else { return false }
+    return hostname == "rack.local"
+        || hostname == "localhost"
+        || hostname == "127.0.0.1"
+        || hostname == "::1"
 }
 
 private func rackRouteName(from host: String?) -> String? {
@@ -293,9 +364,13 @@ private func rackRouteName(from host: String?) -> String? {
 private func rackHostname(from host: String?) -> String? {
     guard let host, !host.isEmpty else { return nil }
     if host.first == "[" {
-        return host.dropFirst().split(separator: "]", maxSplits: 1).first.map { String($0).lowercased() }
+        return host.dropFirst().split(separator: "]", maxSplits: 1).first.map {
+            String($0).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        }
     }
-    return host.split(separator: ":", maxSplits: 1).first.map { String($0).lowercased() }
+    return host.split(separator: ":", maxSplits: 1).first.map {
+        String($0).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+    }
 }
 
 private enum RackLocalFunctionError: Error {

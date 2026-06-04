@@ -1,4 +1,5 @@
 use chrono::{DateTime, Datelike, Local, NaiveTime, TimeZone, Weekday};
+use globset::GlobBuilder;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::ffi::{CStr, CString};
@@ -42,11 +43,18 @@ fn c_string(value: String) -> *mut c_char {
 
 #[derive(Clone, Debug)]
 struct FunctionRoute {
+    package: String,
     id: String,
     path: String,
     method: String,
     function: String,
     wasm_path: PathBuf,
+}
+
+#[derive(Clone, Debug)]
+struct FunctionRouteMatch {
+    route: FunctionRoute,
+    request_path: String,
 }
 
 #[derive(Clone, Debug)]
@@ -164,8 +172,13 @@ fn parse_manifest(root: &Path) -> FunctionPackage {
                 .push(format!("route '{id}' uses reserved path '{normalized}'"));
             continue;
         }
+        if let Err(message) = validate_route_path(&normalized) {
+            package.errors.push(format!("route '{id}' {message}"));
+            continue;
+        }
 
         package.routes.push(FunctionRoute {
+            package: package.name.clone(),
             id,
             path: normalized,
             method: route.method.to_uppercase(),
@@ -256,45 +269,129 @@ fn function_snapshot_json() -> serde_json::Value {
     serde_json::json!(functions)
 }
 
-fn find_route(method: &str, path: &str) -> Result<FunctionRoute, String> {
+fn route_has_glob(path: &str) -> bool {
+    path.bytes()
+        .any(|byte| matches!(byte, b'*' | b'?' | b'[' | b']' | b'{' | b'}'))
+}
+
+fn route_specificity(path: &str) -> usize {
+    let literal_count = path
+        .chars()
+        .filter(|character| !matches!(character, '*' | '?' | '[' | ']' | '{' | '}' | ',' | '!'))
+        .count();
+    if route_has_glob(path) {
+        literal_count
+    } else {
+        literal_count + 10_000
+    }
+}
+
+fn route_matches(route_path: &str, request_path: &str) -> Result<bool, String> {
+    if !route_has_glob(route_path) {
+        return Ok(route_path == request_path);
+    }
+
+    GlobBuilder::new(route_path)
+        .literal_separator(true)
+        .backslash_escape(true)
+        .build()
+        .map(|glob| glob.compile_matcher().is_match(request_path))
+        .map_err(|error| format!("invalid route glob '{route_path}': {error}"))
+}
+
+fn validate_route_path(route_path: &str) -> Result<(), String> {
+    if route_has_glob(route_path) {
+        GlobBuilder::new(route_path)
+            .literal_separator(true)
+            .backslash_escape(true)
+            .build()
+            .map(|_| ())
+            .map_err(|error| format!("uses invalid glob '{route_path}': {error}"))
+    } else {
+        Ok(())
+    }
+}
+
+fn find_route(method: &str, path: &str) -> Result<FunctionRouteMatch, String> {
     let normalized = normalize_route_path(path);
     if normalized == "/" || normalized.starts_with("/_") {
         return Err("reserved rack.local path".to_string());
     }
 
     let mut matched: Option<FunctionRoute> = None;
+    let mut matched_score = 0usize;
     for package in load_functions() {
         if !package.errors.is_empty() {
             continue;
         }
         for route in package.routes {
-            if route.method == method.to_uppercase() && route.path == normalized {
-                if matched.is_some() {
+            if route.method != method.to_uppercase() {
+                continue;
+            }
+
+            if route_matches(&route.path, &normalized)? {
+                let score = route_specificity(&route.path);
+                if matched.is_some() && score == matched_score {
                     return Err(format!(
                         "route conflict for {} {}",
                         method.to_uppercase(),
                         normalized
                     ));
                 }
-                matched = Some(route);
+                if score > matched_score {
+                    matched = Some(route);
+                    matched_score = score;
+                }
             }
         }
     }
 
-    matched.ok_or_else(|| {
-        format!(
-            "no function route for {} {}",
-            method.to_uppercase(),
-            normalized
-        )
-    })
+    matched
+        .map(|route| FunctionRouteMatch {
+            route,
+            request_path: normalized.clone(),
+        })
+        .ok_or_else(|| {
+            format!(
+                "no function route for {} {}",
+                method.to_uppercase(),
+                normalized
+            )
+        })
 }
 
-fn run_function(route: &FunctionRoute, request: &serde_json::Value) -> serde_json::Value {
+fn route_match_request(
+    route_match: &FunctionRouteMatch,
+    request: &serde_json::Value,
+) -> serde_json::Value {
+    let mut request = request.clone();
+    let is_glob = route_has_glob(&route_match.route.path);
+    let route = serde_json::json!({
+        "package": route_match.route.package,
+        "id": route_match.route.id,
+        "path": route_match.route.path,
+        "pattern": route_match.route.path,
+        "method": route_match.route.method,
+        "function": route_match.route.function,
+        "is_glob": is_glob,
+        "matched_path": route_match.request_path,
+    });
+
+    if let Some(object) = request.as_object_mut() {
+        object.insert("route".to_string(), route);
+    }
+    request
+}
+
+fn run_function(
+    route_match: &FunctionRouteMatch,
+    request: &serde_json::Value,
+) -> serde_json::Value {
+    let request = route_match_request(route_match, request);
     run_wasm_function(
-        &route.function,
-        &route.wasm_path,
-        request,
+        &route_match.route.function,
+        &route_match.route.wasm_path,
+        &request,
         "function.response",
     )
 }
@@ -316,10 +413,28 @@ fn run_wasm_function(
     request: &serde_json::Value,
     response_type: &str,
 ) -> serde_json::Value {
-    let Some(runtime) = ["/opt/homebrew/bin/wasmtime", "/usr/local/bin/wasmtime"]
-        .iter()
-        .find(|candidate| Path::new(candidate).is_file())
-    else {
+    let log_target = function_log_target(request, response_type);
+    let started = Instant::now();
+    append_function_log(
+        &log_target,
+        serde_json::json!({
+            "time": Local::now().to_rfc3339(),
+            "event": "started",
+            "function": function,
+        }),
+    );
+
+    let Some(runtime) = find_wasmtime() else {
+        append_function_log(
+            &log_target,
+            serde_json::json!({
+                "time": Local::now().to_rfc3339(),
+                "event": "finished",
+                "function": function,
+                "status": 500,
+                "duration_ms": started.elapsed().as_millis(),
+            }),
+        );
         return serde_json::json!({
             "type": response_type,
             "payload": {
@@ -335,7 +450,7 @@ fn run_wasm_function(
         .arg("run")
         .arg("--dir")
         .arg("/::/")
-        .args(wasi_env_args())
+        .args(wasmtime_full_wasi_args())
         .arg("--invoke")
         .arg(function)
         .arg(wasm_path)
@@ -346,6 +461,17 @@ fn run_wasm_function(
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
+            append_function_log(
+                &log_target,
+                serde_json::json!({
+                    "time": Local::now().to_rfc3339(),
+                    "event": "finished",
+                    "function": function,
+                    "status": 500,
+                    "duration_ms": started.elapsed().as_millis(),
+                    "error": error.to_string(),
+                }),
+            );
             return serde_json::json!({
                 "type": response_type,
                 "payload": {
@@ -364,6 +490,17 @@ fn run_wasm_function(
     let output = match wait_with_timeout(child, Duration::from_secs(30)) {
         Ok(output) => output,
         Err(message) => {
+            append_function_log(
+                &log_target,
+                serde_json::json!({
+                    "time": Local::now().to_rfc3339(),
+                    "event": "finished",
+                    "function": function,
+                    "status": 500,
+                    "duration_ms": started.elapsed().as_millis(),
+                    "error": message,
+                }),
+            );
             return serde_json::json!({
                 "type": response_type,
                 "payload": {
@@ -375,8 +512,20 @@ fn run_wasm_function(
         }
     };
 
+    write_stderr_logs(&log_target, &output.stderr);
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        append_function_log(
+            &log_target,
+            serde_json::json!({
+                "time": Local::now().to_rfc3339(),
+                "event": "finished",
+                "function": function,
+                "status": 500,
+                "duration_ms": started.elapsed().as_millis(),
+            }),
+        );
         return serde_json::json!({
             "type": response_type,
             "payload": {
@@ -388,6 +537,39 @@ fn run_wasm_function(
     }
 
     let body = String::from_utf8_lossy(&output.stdout).to_string();
+    if response_type == "function.response" {
+        if let Some(payload) = parse_function_response(&body) {
+            let status = payload
+                .get("status")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(200);
+            append_function_log(
+                &log_target,
+                serde_json::json!({
+                    "time": Local::now().to_rfc3339(),
+                    "event": "finished",
+                    "function": function,
+                    "status": status,
+                    "duration_ms": started.elapsed().as_millis(),
+                }),
+            );
+            return serde_json::json!({
+                "type": response_type,
+                "payload": payload,
+            });
+        }
+    }
+
+    append_function_log(
+        &log_target,
+        serde_json::json!({
+            "time": Local::now().to_rfc3339(),
+            "event": "finished",
+            "function": function,
+            "status": 200,
+            "duration_ms": started.elapsed().as_millis(),
+        }),
+    );
     serde_json::json!({
         "type": response_type,
         "payload": {
@@ -396,6 +578,199 @@ fn run_wasm_function(
             "body": body
         }
     })
+}
+
+struct FunctionLogTarget {
+    package: String,
+    kind: &'static str,
+    id: String,
+}
+
+fn function_log_target(request: &serde_json::Value, response_type: &str) -> FunctionLogTarget {
+    if response_type == "function.response" {
+        let route = request.get("route");
+        return FunctionLogTarget {
+            package: route
+                .and_then(|route| route.get("package"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown")
+                .to_string(),
+            kind: "routes",
+            id: route
+                .and_then(|route| route.get("id"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown")
+                .to_string(),
+        };
+    }
+
+    FunctionLogTarget {
+        package: request
+            .get("package")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown")
+            .to_string(),
+        kind: "crons",
+        id: request
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown")
+            .to_string(),
+    }
+}
+
+fn append_function_log(target: &FunctionLogTarget, entry: serde_json::Value) {
+    let date = Local::now().format("%Y-%m-%d").to_string();
+    let path = home_dir()
+        .join(".rack")
+        .join("logs")
+        .join("functions")
+        .join(safe_log_component(&target.package))
+        .join(target.kind)
+        .join(safe_log_component(&target.id))
+        .join(format!("{date}.jsonl"));
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(file, "{entry}");
+    }
+}
+
+fn write_stderr_logs(target: &FunctionLogTarget, stderr: &[u8]) {
+    let stderr = String::from_utf8_lossy(stderr);
+    for line in stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+            if value
+                .get("rack_log")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+            {
+                append_function_log(
+                    target,
+                    serde_json::json!({
+                        "time": Local::now().to_rfc3339(),
+                        "level": value.get("level").and_then(serde_json::Value::as_str).unwrap_or("info"),
+                        "message": value.get("message").and_then(serde_json::Value::as_str).unwrap_or(""),
+                    }),
+                );
+                continue;
+            }
+        }
+
+        append_function_log(
+            target,
+            serde_json::json!({
+                "time": Local::now().to_rfc3339(),
+                "level": "stderr",
+                "message": line,
+            }),
+        );
+    }
+}
+
+fn safe_log_component(value: &str) -> String {
+    let component = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+
+    if component.is_empty() {
+        "unknown".to_string()
+    } else {
+        component
+    }
+}
+
+fn find_wasmtime() -> Option<PathBuf> {
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .chain([
+            PathBuf::from("/opt/homebrew/bin"),
+            PathBuf::from("/usr/local/bin"),
+        ])
+        .map(|dir| dir.join("wasmtime"))
+        .find(|candidate| candidate.is_file())
+}
+
+fn wasmtime_full_wasi_args() -> Vec<OsString> {
+    let mut args = vec![
+        OsString::from("-S"),
+        OsString::from("cli=y"),
+        OsString::from("-S"),
+        OsString::from("allow-ip-name-lookup=y"),
+        OsString::from("-S"),
+        OsString::from("tcp=y"),
+        OsString::from("-S"),
+        OsString::from("udp=y"),
+        OsString::from("-S"),
+        OsString::from("inherit-env=y"),
+    ];
+    args.extend(wasi_env_args());
+    args
+}
+
+fn parse_function_response(stdout: &str) -> Option<serde_json::Value> {
+    let value: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
+    let status = value
+        .get("status")
+        .and_then(|value| value.as_u64())
+        .filter(|status| (100..=599).contains(status))
+        .unwrap_or(200);
+    let headers = value
+        .get("headers")
+        .and_then(|headers| headers.as_object())
+        .map(|headers| {
+            headers
+                .iter()
+                .filter_map(|(key, value)| {
+                    value.as_str().map(|value| {
+                        (
+                            key.to_ascii_lowercase(),
+                            serde_json::Value::String(value.to_string()),
+                        )
+                    })
+                })
+                .collect::<serde_json::Map<_, _>>()
+        })
+        .unwrap_or_else(|| {
+            let mut headers = serde_json::Map::new();
+            headers.insert(
+                "content-type".to_string(),
+                serde_json::Value::String("text/plain".to_string()),
+            );
+            headers
+        });
+    let body = value
+        .get("body")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    Some(serde_json::json!({
+        "status": status,
+        "headers": headers,
+        "body": body,
+    }))
 }
 
 fn wasi_env_args() -> Vec<OsString> {
@@ -728,6 +1103,61 @@ mod tests {
             Schedule::Interval(_) => panic!("expected calendar"),
         }
     }
+
+    #[test]
+    fn parses_structured_http_function_response() {
+        let payload = parse_function_response(
+            r#"{"status":201,"headers":{"Content-Type":"application/json"},"body":"{\"ok\":true}"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(payload["status"], 201);
+        assert_eq!(payload["headers"]["content-type"], "application/json");
+        assert_eq!(payload["body"], r#"{"ok":true}"#);
+    }
+
+    #[test]
+    fn matches_recursive_glob_routes() {
+        assert!(route_matches("/assets/**/*.js", "/assets/app/main.js").unwrap());
+        assert!(!route_matches("/assets/**/*.js", "/assets/app/main.css").unwrap());
+        assert!(!route_matches("/assets/*.js", "/assets/app/main.js").unwrap());
+    }
+
+    #[test]
+    fn exact_routes_are_more_specific_than_globs() {
+        assert!(route_specificity("/gcse") > route_specificity("/*"));
+        assert!(route_specificity("/assets/images/*") > route_specificity("/assets/**"));
+    }
+
+    #[test]
+    fn route_match_request_adds_route_metadata() {
+        let route_match = FunctionRouteMatch {
+            route: FunctionRoute {
+                package: "pkg".to_string(),
+                id: "assets".to_string(),
+                path: "/assets/**".to_string(),
+                method: "GET".to_string(),
+                function: "serve".to_string(),
+                wasm_path: PathBuf::from("functions.wasm"),
+            },
+            request_path: "/assets/app/main.js".to_string(),
+        };
+        let request = serde_json::json!({
+            "method": "GET",
+            "path": "/assets/app/main.js",
+            "uri": "/assets/app/main.js?debug=1",
+            "headers": {},
+            "body": "",
+        });
+
+        let request = route_match_request(&route_match, &request);
+
+        assert_eq!(request["route"]["package"], "pkg");
+        assert_eq!(request["route"]["id"], "assets");
+        assert_eq!(request["route"]["pattern"], "/assets/**");
+        assert_eq!(request["route"]["matched_path"], "/assets/app/main.js");
+        assert_eq!(request["route"]["is_glob"], true);
+    }
 }
 
 fn emit(callback: EventCallback, context: usize, json: &str) {
@@ -804,9 +1234,10 @@ pub extern "C" fn rack_core_command(command_json: *const c_char) -> *mut c_char 
     };
 
     let guard = state().lock().unwrap();
-    let Some(core) = guard.as_ref() else {
+    let Some(started_at_ms) = guard.as_ref().map(|core| core.started_at_ms) else {
         return c_string(r#"{"type":"error","message":"rack core is not running"}"#.to_string());
     };
+    drop(guard);
 
     let parsed: serde_json::Value =
         serde_json::from_str(command).unwrap_or(serde_json::Value::Null);
@@ -818,7 +1249,7 @@ pub extern "C" fn rack_core_command(command_json: *const c_char) -> *mut c_char 
     if command_type == "state.snapshot" {
         return c_string(format!(
             r#"{{"type":"state.snapshot","payload":{{"backend":"rust","started_at_ms":{},"servers":[],"functions":{}}}}}"#,
-            core.started_at_ms,
+            started_at_ms,
             function_snapshot_json()
         ));
     }

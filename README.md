@@ -7,6 +7,7 @@ Rack. is a small macOS menu bar app for running and monitoring multiple dev serv
 - Runs multiple commands concurrently from your menu bar
 - Persists named server configs
 - Supports working directories, args, and environment variables
+- Runs local Rust-to-WASM functions behind `rack.local`
 - Lets you start, stop, and restart each server independently
 - Stores recent process output so you can inspect logs quickly
 
@@ -26,6 +27,12 @@ That writes the bundled app to:
 
 ```text
 dist/Rack.app
+```
+
+To make `/Applications/Rack.app` always point at the latest local build:
+
+```bash
+./scripts/shim-app.sh
 ```
 
 On launch, `Rack.app` installs the bundled `rack` CLI at:
@@ -71,3 +78,7 @@ Rack. will automatically migrate existing config and terminal preferences on fir
 - Commands are executed in an interactive login `zsh` shell
 - Arguments are currently split on whitespace, so quoted shell syntax is not supported yet
 - This is intended for local dev servers, not long-lived production services
+
+## Docs
+
+- [Rack Functions](docs/rack-functions.md)

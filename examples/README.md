@@ -8,18 +8,15 @@ manifest.toml
 functions.wasm
 ```
 
-Build one with:
+Build and install one with:
 
 ```bash
 cd examples/hello-route
-rack function build
+rack fn add
 ```
 
-Then install it with:
-
-```bash
-rack function .
-```
+See [../docs/rack-functions.md](../docs/rack-functions.md) for the full package
+format, request/response contract, and schedule syntax.
 
 The examples target `wasm32-wasip1`. If Rust does not have that target yet:
 

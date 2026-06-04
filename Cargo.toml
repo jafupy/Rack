@@ -1,5 +1,7 @@
 [workspace]
 members = [
+    "Sources/rack-sdk-rs",
+    "Sources/rack-macros",
     "Sources/rack-bridge",
     "Sources/rack-cli-rs",
     "Sources/rack-core",
