@@ -68,9 +68,8 @@ final class ProxyServer: @unchecked Sendable {
 
         // Sync the UserDefaults "standard ports" flag with the actual files on disk.
         // Old installs may have the daemon but not the rack.local hosts entry.
-        let daemonExists = FileManager.default.fileExists(atPath: ProxyServer.daemonPath)
         UserDefaults.standard.set(
-            daemonExists && Self.hasRackLocalHostsEntry(),
+            Self.hasCurrentPortForwardingDaemon() && Self.hasRackLocalHostsEntry(),
             forKey: "standardPortsEnabled"
         )
     }
@@ -174,7 +173,7 @@ final class ProxyServer: @unchecked Sendable {
                 <array>
                     <string>/bin/sh</string>
                     <string>-c</string>
-                    <string>printf '%s\\n' \(pfCommand) | /sbin/pfctl -a com.apple/rack -f - 2&gt;/dev/null || true</string>
+                    <string>/sbin/pfctl -E 2&gt;/dev/null || true; printf '%s\\n' \(pfCommand) | /sbin/pfctl -a com.apple/rack -f - 2&gt;/dev/null || true</string>
                 </array>
                 <key>RunAtLoad</key>
                 <true/>
@@ -210,6 +209,7 @@ final class ProxyServer: @unchecked Sendable {
             rm -f "$tmp_hosts"
             /usr/bin/dscacheutil -flushcache 2>/dev/null || true
             /usr/bin/killall -HUP mDNSResponder 2>/dev/null || true
+            /sbin/pfctl -E 2>/dev/null || true
             printf '%s\\n' \(pfCommand) | /sbin/pfctl -a com.apple/rack -f -
             """
         guard (try? setupScript.write(toFile: scriptPath, atomically: true, encoding: .utf8)) != nil else {
@@ -273,6 +273,16 @@ final class ProxyServer: @unchecked Sendable {
             && hosts.contains("127.0.0.1 rack.local")
             && hosts.contains("::1 rack.local")
             && hosts.contains(hostsEndMarker)
+    }
+
+    private static func hasCurrentPortForwardingDaemon() -> Bool {
+        guard let plist = try? String(contentsOfFile: daemonPath, encoding: .utf8) else {
+            return false
+        }
+
+        return plist.contains("/sbin/pfctl -E")
+            && plist.contains("port 80 -> 127.0.0.1 port")
+            && plist.contains("port 443 -> 127.0.0.1 port")
     }
 
     private enum TLSCertificateError: Error {
@@ -452,7 +462,7 @@ private enum WebSocketBackendConnector {
             }
 
         let connectFuture = route.socketPath.isEmpty
-            ? bootstrap.connect(host: "127.0.0.1", port: route.tcpPort)
+            ? bootstrap.connect(host: "localhost", port: route.tcpPort)
             : bootstrap.connect(unixDomainSocketPath: route.socketPath)
 
         return connectFuture.flatMap { backend in
@@ -758,7 +768,7 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
             }
 
         let connectFuture = route.socketPath.isEmpty
-            ? bootstrap.connect(host: "127.0.0.1", port: route.tcpPort)
+            ? bootstrap.connect(host: "localhost", port: route.tcpPort)
             : bootstrap.connect(unixDomainSocketPath: route.socketPath)
 
         connectFuture.whenComplete { result in
