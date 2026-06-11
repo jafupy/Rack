@@ -9,7 +9,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let ipc = IPCServer()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let popover = NSPopover()
-    private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         CLIInstaller.installBundledCLI()
@@ -50,11 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.behavior = .transient
         popover.animates = true
         let controller = NSHostingController(
-            rootView: MenuBarContentView(openSettings: { [weak self] in
-                self?.showSettingsWindow()
-            })
-            .environmentObject(store)
-            .environmentObject(launchAtLogin)
+            rootView: MenuBarRootView()
+                .environmentObject(store)
+                .environmentObject(launchAtLogin)
         )
         controller.sizingOptions = [.preferredContentSize]
         popover.contentViewController = controller
@@ -69,29 +66,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.contentViewController?.view.window?.makeKey()
         }
     }
+}
 
-    private func showSettingsWindow() {
-        if let settingsWindow {
-            settingsWindow.makeKeyAndOrderFront(nil)
+@MainActor
+private struct MenuBarRootView: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        MenuBarContentView {
+            openWindow(id: "settings")
             NSApplication.shared.activate(ignoringOtherApps: true)
-            return
         }
-
-        let controller = NSHostingController(
-            rootView: SettingsView()
-                .environmentObject(store)
-                .environmentObject(launchAtLogin)
-                .frame(minWidth: 860, minHeight: 540)
-        )
-        let window = NSWindow(contentViewController: controller)
-        window.title = "Settings"
-        window.setContentSize(NSSize(width: 860, height: 540))
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.isReleasedWhenClosed = false
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        settingsWindow = window
-        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 }
 
@@ -101,11 +86,12 @@ struct RackApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("Settings", id: "main") {
+        WindowGroup("Rack. Settings", id: "settings") {
             SettingsView()
                 .environmentObject(appDelegate.store)
                 .environmentObject(appDelegate.launchAtLogin)
                 .frame(minWidth: 860, minHeight: 540)
         }
+        .windowResizability(.contentMinSize)
     }
 }

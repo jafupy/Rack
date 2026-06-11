@@ -3,7 +3,6 @@ import SwiftUI
 @MainActor
 struct MenuBarContentView: View {
   @EnvironmentObject private var store: ServerStore
-  @Environment(\.openWindow) private var openWindow
   @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
   @State private var functionsExpanded = false
   var openSettings: (() -> Void)?
@@ -74,8 +73,10 @@ struct MenuBarContentView: View {
         Text("No Servers")
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(.secondary)
-        Button("Add a Server") {
+        Button {
           showSettings()
+        } label: {
+          Text("Add a Server")
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
@@ -153,9 +154,6 @@ struct MenuBarContentView: View {
   private func showSettings() {
     if let openSettings {
       openSettings()
-    } else {
-      openWindow(id: "main")
-      NSApplication.shared.activate(ignoringOtherApps: true)
     }
   }
 }

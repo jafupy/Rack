@@ -81,8 +81,6 @@ cat > "$PLIST_PATH" <<'PLIST'
   <string>public.app-category.developer-tools</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
-  <key>LSUIElement</key>
-  <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>

@@ -7,6 +7,10 @@ import NIOPosix
 @preconcurrency import NIOSSL
 import RackCoreFFI
 
+private struct UnsafeSendableBox<Value>: @unchecked Sendable {
+    let value: Value
+}
+
 /// HTTP/1.1 reverse proxy that routes *.localhost to unix sockets.
 /// Runs inside Rack.app — no external daemon, no Node.
 final class ProxyServer: @unchecked Sendable {
@@ -98,21 +102,19 @@ final class ProxyServer: @unchecked Sendable {
                     upgraders: [upgrader],
                     completionHandler: { _ in }
                 )
-                let configuredTLS: EventLoopFuture<Void>
-                if let tlsContext {
-                    configuredTLS = channel.pipeline.addHandler(NIOSSLServerHandler(context: tlsContext))
-                } else {
-                    configuredTLS = channel.eventLoop.makeSucceededVoidFuture()
-                }
-
-                return configuredTLS.flatMap {
-                    channel.pipeline.configureHTTPServerPipeline(
-                    withPipeliningAssistance: true,
-                    withServerUpgrade: upgradeConfig,
-                    withErrorHandling: true
+                do {
+                    if let tlsContext {
+                        try channel.pipeline.syncOperations.addHandler(NIOSSLServerHandler(context: tlsContext))
+                    }
+                    try channel.pipeline.syncOperations.configureHTTPServerPipeline(
+                        withPipeliningAssistance: true,
+                        withServerUpgrade: upgradeConfig,
+                        withErrorHandling: true
                     )
-                }.flatMap {
-                    channel.pipeline.addHandler(HTTPProxyHandler())
+                    try channel.pipeline.syncOperations.addHandler(HTTPProxyHandler())
+                    return channel.eventLoop.makeSucceededVoidFuture()
+                } catch {
+                    return channel.eventLoop.makeFailedFuture(error)
                 }
             }
             .childChannelOption(.socketOption(.so_reuseaddr), value: 1)
@@ -456,8 +458,12 @@ private enum WebSocketBackendConnector {
                         context.pipeline.removeHandler(requestHandler, promise: nil)
                     }
                 )
-                return channel.pipeline.addHTTPClientHandlers(withClientUpgrade: upgradeConfig).flatMap {
-                    channel.pipeline.addHandler(requestHandler)
+                do {
+                    try channel.pipeline.syncOperations.addHTTPClientHandlers(withClientUpgrade: upgradeConfig)
+                    try channel.pipeline.syncOperations.addHandler(requestHandler)
+                    return channel.eventLoop.makeSucceededVoidFuture()
+                } catch {
+                    return channel.eventLoop.makeFailedFuture(error)
                 }
             }
 
@@ -748,8 +754,9 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
         // Not ready yet — socket path empty and no TCP port
         guard !route.socketPath.isEmpty || route.tcpPort > 0 else {
             if attempt < 120 && context.channel.isActive {
+                let sendableContext = UnsafeSendableBox(value: context)
                 context.eventLoop.scheduleTask(in: .milliseconds(500)) {
-                    self.openBackend(context: context, host: host, head: head, attempt: attempt + 1)
+                    self.openBackend(context: sendableContext.value, host: host, head: head, attempt: attempt + 1)
                 }
             } else {
                 sendError(context: context, status: .serviceUnavailable,
@@ -758,11 +765,13 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
             return
         }
 
+        let sendableContext = UnsafeSendableBox(value: context)
+        let frontend = context.channel
         let bootstrap = ClientBootstrap(group: context.eventLoop)
             .channelInitializer { channel in
                 channel.pipeline.addHTTPClientHandlers().flatMap {
                     channel.pipeline.addHandler(
-                        BackendResponseHandler(frontend: context.channel)
+                        BackendResponseHandler(frontend: frontend)
                     )
                 }
             }
@@ -789,12 +798,17 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
                     backend.flush()
 
                 case .failure:
-                    if attempt < 120 && context.channel.isActive {
-                        context.eventLoop.scheduleTask(in: .milliseconds(500)) {
-                            self.openBackend(context: context, host: host, head: head, attempt: attempt + 1)
+                    if attempt < 120 && sendableContext.value.channel.isActive {
+                        sendableContext.value.eventLoop.scheduleTask(in: .milliseconds(500)) {
+                            self.openBackend(
+                                context: sendableContext.value,
+                                host: host,
+                                head: head,
+                                attempt: attempt + 1
+                            )
                         }
                     } else {
-                        self.sendError(context: context, status: .badGateway,
+                        self.sendError(context: sendableContext.value, status: .badGateway,
                                        body: "rack: backend not ready — is the server starting?")
                     }
                 }
@@ -887,8 +901,9 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
         let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
         context.write(wrapOutboundOut(.head(head)), promise: nil)
         context.write(wrapOutboundOut(.body(.byteBuffer(buf))), promise: nil)
+        let sendableContext = UnsafeSendableBox(value: context)
         context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
-            context.close(promise: nil)
+            sendableContext.value.close(promise: nil)
         }
     }
 }

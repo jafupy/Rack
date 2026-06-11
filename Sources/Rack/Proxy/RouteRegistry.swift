@@ -54,7 +54,7 @@ final class RouteRegistry: @unchecked Sendable {
     }
 
     func unregister(name: String) {
-        lock.withLock { routes.removeValue(forKey: name) }
+        lock.withLock { _ = routes.removeValue(forKey: name) }
         try? persist()
     }
 
