@@ -14,7 +14,7 @@ EXECUTABLE_PATH=""
 
 mkdir -p "$BUILD_DIR" "$DIST_DIR"
 
-# Build rack-bridge (Rust)
+# Build Rust tools
 if [[ "$(uname -m)" == "arm64" ]]; then
   RUST_TARGET="aarch64-apple-darwin"
 else
@@ -26,6 +26,7 @@ cargo build --release \
   --target-dir "$BUILD_DIR/rust" \
   --target "$RUST_TARGET"
 RACK_BRIDGE_BIN="$BUILD_DIR/rust/$RUST_TARGET/release/rack-bridge"
+RACK_CLI_BIN="$BUILD_DIR/rust/$RUST_TARGET/release/rack"
 
 # Build Swift app
 swift build --configuration release --product Rack --scratch-path "$BUILD_DIR"
@@ -49,6 +50,9 @@ chmod +x "$MACOS_DIR/Rack"
 
 cp "$RACK_BRIDGE_BIN" "$RESOURCES_DIR/rack-bridge"
 chmod +x "$RESOURCES_DIR/rack-bridge"
+
+cp "$RACK_CLI_BIN" "$RESOURCES_DIR/rack"
+chmod +x "$RESOURCES_DIR/rack"
 
 cat > "$PLIST_PATH" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

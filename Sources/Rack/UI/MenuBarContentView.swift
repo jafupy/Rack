@@ -4,6 +4,9 @@ import SwiftUI
 struct MenuBarContentView: View {
   @EnvironmentObject private var store: ServerStore
   @Environment(\.openWindow) private var openWindow
+  @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
+  @State private var functionsExpanded = false
+  var openSettings: (() -> Void)?
 
   private var runningCount: Int {
     store.servers.filter { store.status(for: $0.id).isRunning }.count
@@ -11,8 +14,6 @@ struct MenuBarContentView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      header
-      Divider()
       serverList
       if !store.functions.isEmpty {
         Divider()
@@ -22,15 +23,28 @@ struct MenuBarContentView: View {
       footer
     }
     .frame(width: 340)
+    .fixedSize(horizontal: false, vertical: true)
   }
 
   private var functionList: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
-        Label("Functions", systemImage: "function")
+        Button {
+          functionsExpanded.toggle()
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: functionsExpanded ? "chevron.down" : "chevron.right")
+              .font(.system(size: 9, weight: .semibold))
+              .frame(width: 10)
+            Label("Functions", systemImage: "function")
+          }
           .font(.system(size: 11, weight: .semibold))
           .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+
         Spacer()
+
         Button {
           store.reloadFunctions()
         } label: {
@@ -40,30 +54,10 @@ struct MenuBarContentView: View {
         .foregroundStyle(.secondary)
       }
 
-      ForEach(store.functions.prefix(4)) { function in
-        FunctionMenuRow(function: function)
-      }
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
-  }
-
-  private var header: some View {
-    HStack(spacing: 8) {
-      Text("Rack.")
-        .font(.system(size: 13, weight: .semibold))
-      Spacer()
-      if runningCount > 0 {
-        HStack(spacing: 5) {
-          Circle().fill(.green).frame(width: 6, height: 6)
-          Text("\(runningCount) running")
-            .font(.system(size: 11))
-            .foregroundStyle(.green)
+      if functionsExpanded {
+        ForEach(store.functions.prefix(4)) { function in
+          FunctionMenuRow(function: function)
         }
-      } else if !store.servers.isEmpty {
-        Text("All stopped")
-          .font(.system(size: 11))
-          .foregroundStyle(.tertiary)
       }
     }
     .padding(.horizontal, 14)
@@ -81,8 +75,7 @@ struct MenuBarContentView: View {
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(.secondary)
         Button("Add a Server") {
-          openWindow(id: "main")
-          NSApplication.shared.activate(ignoringOtherApps: true)
+          showSettings()
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
@@ -90,31 +83,51 @@ struct MenuBarContentView: View {
       .frame(maxWidth: .infinity)
       .padding(.vertical, 30)
     } else {
-      ScrollView {
-        LazyVStack(spacing: 0) {
-          ForEach(Array(store.servers.enumerated()), id: \.element.id) { index, server in
-            ServerMenuRow(server: server)
-            if index < store.servers.count - 1 {
-              Divider().padding(.leading, 36)
-            }
-          }
+      if store.servers.count > 4 {
+        ScrollView {
+          serverRows
+        }
+        .frame(maxHeight: 360)
+      } else {
+        serverRows
+      }
+    }
+  }
+
+  private var serverRows: some View {
+    LazyVStack(spacing: 0) {
+      ForEach(Array(store.servers.enumerated()), id: \.element.id) { index, server in
+        ServerMenuRow(server: server)
+        if index < store.servers.count - 1 {
+          Divider().padding(.leading, 36)
         }
       }
-      .frame(maxHeight: 440)
     }
   }
 
   private var footer: some View {
     HStack {
       Button {
-        openWindow(id: "main")
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        showSettings()
       } label: {
         Image(systemName: "gear")
       }
       .buttonStyle(.plain)
       .font(.system(size: 11))
       .foregroundStyle(.secondary)
+
+      if runningCount > 0 {
+        HStack(spacing: 5) {
+          Circle().fill(.green).frame(width: 6, height: 6)
+          Text("\(runningCount) running")
+            .font(.system(size: 11))
+            .foregroundStyle(.green)
+        }
+      } else if !store.servers.isEmpty {
+        Text("All stopped")
+          .font(.system(size: 11))
+          .foregroundStyle(.tertiary)
+      }
 
       Spacer()
 
@@ -136,10 +149,21 @@ struct MenuBarContentView: View {
     .padding(.horizontal, 14)
     .padding(.vertical, 8)
   }
+
+  private func showSettings() {
+    if let openSettings {
+      openSettings()
+    } else {
+      openWindow(id: "main")
+      NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+  }
 }
 
 @MainActor
 private struct FunctionMenuRow: View {
+  @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
+
   let function: ServerStore.FunctionSummary
 
   var body: some View {
@@ -156,7 +180,7 @@ private struct FunctionMenuRow: View {
       }
 
       ForEach(function.routes.prefix(2)) { route in
-        Text("\(route.method) rack.local\(route.path)")
+        Text("\(route.method) \(functionRouteURL(route.path))")
           .font(.system(size: 10, design: .monospaced))
           .foregroundStyle(.secondary)
           .lineLimit(1)
@@ -169,6 +193,13 @@ private struct FunctionMenuRow: View {
           .lineLimit(1)
       }
     }
+  }
+
+  private func functionRouteURL(_ path: String) -> String {
+    if standardPortsEnabled {
+      return "rack.local\(path)"
+    }
+    return "localhost:\(ProxyServer.boundPort)\(path)"
   }
 }
 

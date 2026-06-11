@@ -14,7 +14,6 @@ let package = Package(
     ],
     products: [
         .executable(name: "Rack", targets: ["Rack"]),
-        .executable(name: "rack", targets: ["RackCLI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
@@ -47,10 +46,6 @@ let package = Package(
             name: "RackCoreFFI",
             path: "Sources/RackCoreFFI",
             publicHeadersPath: "include"
-        ),
-        .executableTarget(
-            name: "RackCLI",
-            path: "Sources/rack-cli"
         ),
     ]
 )

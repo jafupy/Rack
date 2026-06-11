@@ -142,65 +142,389 @@ private struct FunctionsSettingsView: View {
   @EnvironmentObject private var store: ServerStore
   @AppStorage("functionWorkerLimit") private var functionWorkerLimit = 4
 
+  private var routeCount: Int {
+    store.functions.reduce(0) { $0 + $1.routes.count }
+  }
+
+  private var cronCount: Int {
+    store.functions.reduce(0) { $0 + $1.crons.count }
+  }
+
+  private var errorCount: Int {
+    store.functions.reduce(0) { $0 + $1.errors.count }
+  }
+
   var body: some View {
     VStack(spacing: 0) {
-      HStack {
-        Text("Functions")
-          .font(.system(size: 15, weight: .semibold))
-        Spacer()
-        Button {
-          store.reloadFunctions()
-        } label: {
-          Label("Reload", systemImage: "arrow.clockwise")
-        }
-        .buttonStyle(.bordered)
-      }
-      .padding(.horizontal, 24)
-      .padding(.vertical, 14)
-      .background(.bar)
+      functionsToolbar
 
-      List {
-        Section {
-          Stepper(value: $functionWorkerLimit, in: 1...32) {
-            LabeledContent("Max Threads", value: "\(functionWorkerLimit)")
-          }
-        } header: {
-          Label("Runtime", systemImage: "cpu")
-        } footer: {
-          Text("Maximum concurrent rack.local function workers.")
-        }
+      ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
+          overview
+          runtimePanel
 
-        if store.functions.isEmpty {
-          ContentUnavailableView("No Functions", systemImage: "function", description: Text("Install one with rack function <path>."))
-        } else {
-          ForEach(store.functions) { function in
-            Section {
-              ForEach(function.routes) { route in
-                LabeledContent("\(route.method) rack.local\(route.path)", value: route.function)
-                  .fontDesign(.monospaced)
+          if store.functions.isEmpty {
+            emptyState
+          } else {
+            VStack(alignment: .leading, spacing: 10) {
+              Text("Installed Packages")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.4)
+
+              LazyVStack(spacing: 10) {
+                ForEach(store.functions) { function in
+                  FunctionPackagePanel(function: function)
+                }
               }
-              ForEach(function.crons) { cron in
-                LabeledContent(cron.schedule, value: cron.function)
-                  .fontDesign(.monospaced)
-              }
-              ForEach(function.errors, id: \.self) { error in
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                  .foregroundStyle(.orange)
-              }
-            } header: {
-              Text("\(function.name) \(function.version)")
-            } footer: {
-              Text(function.root)
             }
           }
         }
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 26)
+        .padding(.vertical, 22)
       }
-      .listStyle(.inset)
     }
-    .background(.windowBackground)
+    .background(functionsBackground)
     .onAppear {
       store.reloadFunctions()
     }
+  }
+
+  private var functionsToolbar: some View {
+    HStack(spacing: 12) {
+      VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 8) {
+          Image(systemName: "function")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.blue)
+          Text("Functions")
+            .font(.system(size: 15, weight: .semibold))
+        }
+        Text("Rust WASI packages served from rack.local")
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
+      }
+      Spacer()
+      Button {
+        revealFunctionsFolder()
+      } label: {
+        Image(systemName: "folder")
+      }
+      .buttonStyle(.bordered)
+      .help("Reveal ~/.rack/functions")
+
+      Button {
+        store.reloadFunctions()
+      } label: {
+        Image(systemName: "arrow.clockwise")
+      }
+      .buttonStyle(.borderedProminent)
+      .help("Reload functions")
+    }
+    .padding(.horizontal, 24)
+    .padding(.vertical, 12)
+    .background(.bar)
+  }
+
+  private var overview: some View {
+    HStack(spacing: 10) {
+      FunctionMetric(title: "Packages", value: "\(store.functions.count)", systemImage: "shippingbox")
+      FunctionMetric(title: "Routes", value: "\(routeCount)", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+      FunctionMetric(title: "Schedules", value: "\(cronCount)", systemImage: "clock.badge")
+      FunctionMetric(
+        title: "Issues",
+        value: "\(errorCount)",
+        systemImage: errorCount == 0 ? "checkmark.seal" : "exclamationmark.triangle",
+        tint: errorCount == 0 ? .green : .orange
+      )
+    }
+  }
+
+  private var runtimePanel: some View {
+    HStack(alignment: .center, spacing: 18) {
+      ZStack {
+        RoundedRectangle(cornerRadius: 8)
+          .fill(.blue.opacity(0.12))
+        Image(systemName: "cpu")
+          .font(.system(size: 22, weight: .medium))
+          .foregroundStyle(.blue)
+      }
+      .frame(width: 48, height: 48)
+
+      VStack(alignment: .leading, spacing: 5) {
+        Text("Runtime Workers")
+          .font(.system(size: 13, weight: .semibold))
+        Text("Maximum concurrent rack.local function invocations.")
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
+      }
+
+      Spacer()
+
+      Stepper(value: $functionWorkerLimit, in: 1...32) {
+        Text("\(functionWorkerLimit)")
+          .font(.system(size: 20, weight: .semibold, design: .rounded))
+          .monospacedDigit()
+          .frame(width: 38, alignment: .trailing)
+      }
+      .frame(width: 116)
+    }
+    .padding(16)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    .overlay {
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(.quaternary)
+    }
+  }
+
+  private var emptyState: some View {
+    VStack(spacing: 14) {
+      Image(systemName: "curlybraces.square")
+        .font(.system(size: 38, weight: .light))
+        .foregroundStyle(.secondary)
+        .frame(width: 72, height: 72)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+
+      VStack(spacing: 5) {
+        Text("No Functions Installed")
+          .font(.system(size: 16, weight: .semibold))
+        Text("Create one with `rack fn init`, then add it to Rack.")
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
+      }
+
+      HStack(spacing: 8) {
+        FunctionCommandPill("rack fn init my-functions")
+        FunctionCommandPill("rack fn add")
+      }
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 46)
+    .padding(.horizontal, 24)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    .overlay {
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(.quaternary)
+    }
+  }
+
+  private var functionsBackground: some View {
+    ZStack {
+      Color(nsColor: .windowBackgroundColor)
+      LinearGradient(
+        colors: [
+          Color.blue.opacity(0.08),
+          Color.clear,
+          Color.green.opacity(0.04)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+      )
+    }
+  }
+
+  private func revealFunctionsFolder() {
+    let url = FileManager.default.homeDirectoryForCurrentUser
+      .appending(path: ".rack/functions")
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    NSWorkspace.shared.activateFileViewerSelecting([url])
+  }
+}
+
+private struct FunctionMetric: View {
+  let title: String
+  let value: String
+  let systemImage: String
+  var tint: Color = .blue
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: systemImage)
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(tint)
+        .frame(width: 28, height: 28)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+
+      VStack(alignment: .leading, spacing: 1) {
+        Text(value)
+          .font(.system(size: 18, weight: .semibold, design: .rounded))
+          .monospacedDigit()
+        Text(title)
+          .font(.system(size: 10, weight: .medium))
+          .foregroundStyle(.secondary)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    .overlay {
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(.quaternary)
+    }
+  }
+}
+
+private struct FunctionPackagePanel: View {
+  @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
+
+  let function: ServerStore.FunctionSummary
+
+  private var hasErrors: Bool {
+    !function.errors.isEmpty
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .firstTextBaseline, spacing: 10) {
+        VStack(alignment: .leading, spacing: 3) {
+          HStack(spacing: 8) {
+            Text(function.name)
+              .font(.system(size: 15, weight: .semibold))
+              .lineLimit(1)
+            Text(function.version)
+              .font(.system(size: 10, weight: .medium, design: .monospaced))
+              .foregroundStyle(.secondary)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .background(.quaternary, in: Capsule())
+          }
+          Text(function.root)
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+        }
+
+        Spacer()
+
+        Label(hasErrors ? "Needs attention" : "Ready", systemImage: hasErrors ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+          .font(.system(size: 11, weight: .medium))
+          .foregroundStyle(hasErrors ? .orange : .green)
+      }
+
+      if !function.routes.isEmpty {
+        FunctionEndpointGroup(title: "Routes", systemImage: "arrow.triangle.branch", tint: .blue) {
+          ForEach(function.routes) { route in
+            FunctionEndpointRow(
+              leading: route.method,
+              main: functionRouteURL(route.path),
+              trailing: route.function,
+              tint: .blue
+            )
+          }
+        }
+      }
+
+      if !function.crons.isEmpty {
+        FunctionEndpointGroup(title: "Schedules", systemImage: "clock", tint: .green) {
+          ForEach(function.crons) { cron in
+            FunctionEndpointRow(
+              leading: "cron",
+              main: cron.schedule,
+              trailing: cron.function,
+              tint: .green
+            )
+          }
+        }
+      }
+
+      if !function.errors.isEmpty {
+        VStack(alignment: .leading, spacing: 6) {
+          ForEach(function.errors, id: \.self) { error in
+            Label(error, systemImage: "exclamationmark.triangle.fill")
+              .font(.system(size: 11, weight: .medium))
+              .foregroundStyle(.orange)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+        }
+        .padding(10)
+        .background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+      }
+    }
+    .padding(16)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    .overlay {
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(hasErrors ? Color.orange.opacity(0.35) : Color.primary.opacity(0.08))
+    }
+  }
+
+  private func functionRouteURL(_ path: String) -> String {
+    if standardPortsEnabled {
+      return "rack.local\(path)"
+    }
+    return "localhost:\(ProxyServer.boundPort)\(path)"
+  }
+}
+
+private struct FunctionEndpointGroup<Content: View>: View {
+  let title: String
+  let systemImage: String
+  let tint: Color
+  @ViewBuilder var content: Content
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      Label(title, systemImage: systemImage)
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundStyle(tint)
+        .textCase(.uppercase)
+        .tracking(0.3)
+      VStack(spacing: 6) {
+        content
+      }
+    }
+  }
+}
+
+private struct FunctionEndpointRow: View {
+  let leading: String
+  let main: String
+  let trailing: String
+  let tint: Color
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Text(leading.uppercased())
+        .font(.system(size: 10, weight: .bold, design: .monospaced))
+        .foregroundStyle(tint)
+        .frame(width: 48, alignment: .leading)
+      Text(main)
+        .font(.system(size: 12, weight: .medium, design: .monospaced))
+        .lineLimit(1)
+        .truncationMode(.middle)
+      Spacer(minLength: 8)
+      Text(trailing)
+        .font(.system(size: 11, design: .monospaced))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 7)
+    .background(.quinary, in: RoundedRectangle(cornerRadius: 7))
+  }
+}
+
+private struct FunctionCommandPill: View {
+  let command: String
+
+  init(_ command: String) {
+    self.command = command
+  }
+
+  var body: some View {
+    Text(command)
+      .font(.system(size: 11, weight: .medium, design: .monospaced))
+      .foregroundStyle(.secondary)
+      .lineLimit(1)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .background(.quaternary, in: Capsule())
   }
 }
 
@@ -263,8 +587,8 @@ private struct GeneralSettingsView: View {
           Label("Network", systemImage: "network")
         } footer: {
           Text(standardPortsEnabled
-            ? "Servers available at http://name.localhost and https://name.localhost. Requires administrator once; persists across reboots."
-            : "Servers available at http://name.localhost:\(ProxyServer.boundPort).")
+            ? "Servers available at http://name.localhost, https://name.localhost, http://rack.local, and https://rack.local. Requires administrator once; persists across reboots."
+            : "Servers available at http://name.localhost:\(ProxyServer.boundPort). Functions are available at http://localhost:\(ProxyServer.boundPort).")
             .foregroundStyle(.secondary)
         }
 
