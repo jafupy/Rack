@@ -73,6 +73,17 @@ cat > "$PLIST_PATH" <<'PLIST'
   <string>Rack.</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>Rack URL</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>rack</string>
+      </array>
+    </dict>
+  </array>
   <key>CFBundleShortVersionString</key>
   <string>0.1.0</string>
   <key>CFBundleVersion</key>
@@ -80,7 +91,7 @@ cat > "$PLIST_PATH" <<'PLIST'
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.developer-tools</string>
   <key>LSMinimumSystemVersion</key>
-  <string>13.0</string>
+  <string>14.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>

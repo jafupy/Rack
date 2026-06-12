@@ -65,6 +65,20 @@ The first launch creates a config file at:
 
 Rack. will automatically migrate existing config and terminal preferences on first launch.
 
+## macOS integration
+
+Rack. includes Shortcuts/App Intents for starting, stopping, and restarting configured servers, stopping all servers, and reloading functions.
+
+The app also registers the `rack://` URL scheme:
+
+```text
+rack://server/start?id=<server-uuid>
+rack://server/stop?id=<server-uuid>
+rack://server/restart?id=<server-uuid>
+rack://server/stop-all
+rack://functions/reload
+```
+
 ## Unsigned Install
 
 `Rack.` is currently distributed as an unsigned macOS app.

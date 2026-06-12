@@ -39,6 +39,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.stopAllServers()
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            handleRackURL(url)
+        }
+    }
+
     private func configureMenuBarWindow() {
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "server.rack", accessibilityDescription: "Rack")
@@ -99,6 +105,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             break
         }
+    }
+
+    private func handleRackURL(_ url: URL) {
+        guard url.scheme?.lowercased() == "rack" else { return }
+
+        let host = url.host()?.lowercased()
+        let pathComponents = url.pathComponents.filter { $0 != "/" }.map { $0.lowercased() }
+        let action = ([host] + pathComponents).compactMap { $0 }.joined(separator: ".")
+
+        switch action {
+        case "server.start", "servers.start", "start":
+            guard let id = serverID(from: url) else { return }
+            store.startServer(id: id)
+        case "server.stop", "servers.stop", "stop":
+            guard let id = serverID(from: url) else { return }
+            store.stopServer(id: id)
+        case "server.restart", "servers.restart", "restart":
+            guard let id = serverID(from: url) else { return }
+            store.restartServer(id: id)
+        case "server.stop-all", "servers.stop-all", "stop-all":
+            store.stopAllServers()
+        case "functions.reload", "reload-functions":
+            store.reloadFunctions()
+        default:
+            break
+        }
+    }
+
+    private func serverID(from url: URL) -> UUID? {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        let queryItems = components.queryItems ?? []
+        if let idValue = queryItems.first(where: { $0.name == "id" })?.value,
+           let id = UUID(uuidString: idValue) {
+            return id
+        }
+
+        if let name = queryItems.first(where: { $0.name == "name" })?.value?.lowercased() {
+            return store.servers.first { server in
+                server.name.lowercased() == name || server.routeSubdomain.lowercased() == name
+            }?.id
+        }
+
+        if let lastPathComponent = url.pathComponents.last,
+           let id = UUID(uuidString: lastPathComponent) {
+            return id
+        }
+
+        return nil
     }
 
     private func decodeServerLaunchPlan(_ value: Any?) -> ServerLaunchPlan? {
