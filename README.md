@@ -14,13 +14,13 @@ Rack. is a small macOS menu bar app for running and monitoring multiple dev serv
 ## Run it
 
 ```bash
-swift run
+make run
 ```
 
 ## Build a `.app`
 
 ```bash
-./scripts/build-app.sh
+make app
 ```
 
 That writes the bundled app to:
@@ -32,7 +32,7 @@ dist/Rack.app
 To make `/Applications/Rack.app` always point at the latest local build:
 
 ```bash
-./scripts/shim-app.sh
+make shim-app
 ```
 
 On launch, `Rack.app` installs the bundled `rack` CLI at:
@@ -46,7 +46,7 @@ and adds `~/.local/bin` to zsh's PATH through `~/.zprofile` if needed.
 ## Build a `.dmg`
 
 ```bash
-./scripts/build-dmg.sh
+make dmg
 ```
 
 That writes the installer disk image to:

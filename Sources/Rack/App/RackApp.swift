@@ -8,6 +8,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let proxy = ProxyServer()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let popover = NSPopover()
+    private var settingsWindowController: NSWindowController?
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.setActivationPolicy(.accessory)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         CLIInstaller.installBundledCLI()
@@ -55,7 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.behavior = .transient
         popover.animates = true
         let controller = NSHostingController(
-            rootView: MenuBarRootView()
+            rootView: MenuBarContentView { [weak self] in
+                self?.showSettingsWindow()
+            }
                 .environmentObject(store)
                 .environmentObject(launchAtLogin)
         )
@@ -180,17 +187,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else { return nil }
         return try? JSONDecoder().decode(ServerLaunchPlan.self, from: data)
     }
-}
 
-@MainActor
-private struct MenuBarRootView: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        MenuBarContentView {
-            openWindow(id: "settings")
-            NSApplication.shared.activate(ignoringOtherApps: true)
+    private func showSettingsWindow() {
+        if settingsWindowController == nil {
+            let controller = NSHostingController(
+                rootView: SettingsView()
+                    .environmentObject(store)
+                    .environmentObject(launchAtLogin)
+                    .frame(minWidth: 860, minHeight: 540)
+            )
+            let window = NSWindow(contentViewController: controller)
+            window.title = "Rack. Settings"
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.minSize = NSSize(width: 860, height: 540)
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindowController = NSWindowController(window: window)
         }
+
+        settingsWindowController?.showWindow(nil)
+        settingsWindowController?.window?.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 }
 
@@ -200,12 +217,8 @@ struct RackApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("Rack. Settings", id: "settings") {
-            SettingsView()
-                .environmentObject(appDelegate.store)
-                .environmentObject(appDelegate.launchAtLogin)
-                .frame(minWidth: 860, minHeight: 540)
+        Settings {
+            EmptyView()
         }
-        .windowResizability(.contentMinSize)
     }
 }
