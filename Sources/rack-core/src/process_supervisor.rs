@@ -1,8 +1,18 @@
+mod output;
+mod readiness;
+mod routes;
+#[cfg(test)]
+mod tests;
+
+use output::{emit_output, spawn_output_reader};
+use readiness::spawn_readiness_monitor;
+use routes::{prepare_route, unregister_process_route};
+
 use crate::process::{launch_plan, LaunchPlan, LaunchPlanRequest};
+use crate::process_readiness::loopback_listening_ports;
 use crate::{emit, EventCallback};
 use serde_json::Value;
-use std::collections::HashMap;
-use std::io::{BufReader, Read};
+use std::collections::{HashMap, HashSet};
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -20,6 +30,10 @@ static PROCESSES: OnceLock<Mutex<HashMap<String, RunningProcess>>> = OnceLock::n
 
 fn processes() -> &'static Mutex<HashMap<String, RunningProcess>> {
     PROCESSES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub(super) fn is_running(id: &str) -> bool {
+    processes().lock().unwrap().contains_key(id)
 }
 
 pub(crate) fn supervisor_command(
@@ -54,6 +68,12 @@ fn start_server(
     }
 
     let plan = launch_plan(payload)?;
+    prepare_route(&plan)?;
+    let port_snapshot = if !plan.use_bridge && request.config.port.is_none() {
+        loopback_listening_ports()
+    } else {
+        HashSet::new()
+    };
     let mut command = Command::new(&plan.executable);
     command.args(&plan.arguments);
     if !plan.working_directory.is_empty() {
@@ -107,10 +127,21 @@ fn start_server(
         spawn_output_reader(id.clone(), stderr, callback, context);
     }
 
+    spawn_readiness_monitor(
+        id.clone(),
+        pid,
+        plan.clone(),
+        request.config.port,
+        port_snapshot,
+        callback,
+        context,
+    );
+
     let exit_plan = plan.clone();
     thread::spawn(move || {
         let status = child.wait().ok();
         processes().lock().unwrap().remove(&id);
+        unregister_process_route(&exit_plan);
         if let Some(callback) = callback {
             emit(
                 callback,
@@ -144,6 +175,7 @@ fn stop_server(payload: &Value) -> Result<Value, String> {
         .ok_or_else(|| "missing server id".to_string())?;
     let process = processes().lock().unwrap().get(id).cloned();
     if let Some(process) = process {
+        unregister_process_route(&process.plan);
         unsafe {
             libc::kill(-process.pgid, libc::SIGTERM);
         }
@@ -168,68 +200,5 @@ fn stop_server(payload: &Value) -> Result<Value, String> {
                 "plan": null,
             }
         }))
-    }
-}
-
-fn spawn_output_reader(
-    id: String,
-    stream: impl Read + Send + 'static,
-    callback: Option<EventCallback>,
-    context: usize,
-) {
-    thread::spawn(move || {
-        let mut reader = BufReader::new(stream);
-        let mut buffer = [0u8; 4096];
-        loop {
-            let Ok(count) = reader.read(&mut buffer) else {
-                break;
-            };
-            if count == 0 {
-                break;
-            }
-            let output = String::from_utf8_lossy(&buffer[..count]).to_string();
-            emit_output(callback, context, &id, &output);
-        }
-    });
-}
-
-fn emit_output(callback: Option<EventCallback>, context: usize, id: &str, output: &str) {
-    if let Some(callback) = callback {
-        emit(
-            callback,
-            context,
-            &serde_json::json!({
-                "type": "server.output",
-                "payload": {
-                    "id": id,
-                    "output": output,
-                }
-            })
-            .to_string(),
-        );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn supervisor_starts_process_and_returns_pid() {
-        let payload = serde_json::json!({
-            "config": {
-                "id": "00000000-0000-4000-8000-000000000002",
-                "name": "Echo App",
-                "command": "/bin/echo",
-                "arguments": "hello",
-                "workingDirectory": "",
-                "environment": []
-            },
-            "context": {}
-        });
-
-        let response = supervisor_command("server.start", &payload, None, 0).unwrap();
-        assert_eq!(response["type"], "server.started");
-        assert!(response["payload"]["pid"].as_u64().unwrap() > 0);
     }
 }

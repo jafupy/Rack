@@ -20,6 +20,43 @@ fn routes() -> &'static Mutex<BTreeMap<String, Route>> {
     ROUTES.get_or_init(|| Mutex::new(load_routes()))
 }
 
+pub(crate) fn register_pending_route(name: &str, working_directory: &str) -> Result<(), String> {
+    let route = Route {
+        name: name.to_string(),
+        socket_path: String::new(),
+        tcp_port: 0,
+        working_directory: working_directory.to_string(),
+        added_at: serde_json::json!(unix_timestamp_ms()),
+    };
+    let mut guard = routes().lock().unwrap();
+    guard.insert(route.name.clone(), route);
+    persist_routes(&guard)
+}
+
+pub(crate) fn update_route_port(name: &str, tcp_port: u16) -> Result<(), String> {
+    let mut guard = routes().lock().unwrap();
+    if let Some(route) = guard.get_mut(name) {
+        route.tcp_port = tcp_port;
+        persist_routes(&guard)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn update_route_socket_path(name: &str, socket_path: &str) -> Result<(), String> {
+    let mut guard = routes().lock().unwrap();
+    if let Some(route) = guard.get_mut(name) {
+        route.socket_path = socket_path.to_string();
+        persist_routes(&guard)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn unregister_route(name: &str) -> Result<(), String> {
+    let mut guard = routes().lock().unwrap();
+    guard.remove(name);
+    persist_routes(&guard)
+}
+
 pub(crate) fn route_command(command_type: &str, payload: &Value) -> Option<Value> {
     let response = match command_type {
         "routes.register" => register(payload),
@@ -184,6 +221,13 @@ fn persist_routes(routes: &BTreeMap<String, Route>) -> Result<(), String> {
 
 fn routes_path() -> PathBuf {
     home_dir().join(".config").join("rack").join("routes.json")
+}
+
+fn unix_timestamp_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default()
 }
 
 fn home_dir() -> PathBuf {

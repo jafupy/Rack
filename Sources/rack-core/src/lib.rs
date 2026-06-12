@@ -1,3 +1,4 @@
+mod command;
 mod config;
 mod dev_commands;
 mod functions;
@@ -21,18 +22,8 @@ mod test_support {
     }
 }
 
-use config::{
-    handle_ipc_message, load_server_config, save_server_config_command, update_ipc_context,
-};
-use dev_commands::dev_command;
-use functions::{function_snapshot_json, http_function_response, start_scheduler};
+use functions::start_scheduler;
 use ipc::start_ipc_server;
-use process::launch_plan_command;
-use process_readiness::readiness_command;
-use process_supervisor::supervisor_command;
-use project::project_command;
-use proxy::proxy_command;
-use routes::route_command;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::{
@@ -147,137 +138,7 @@ pub extern "C" fn rack_core_command(command_json: *const c_char) -> *mut c_char 
         }
     };
 
-    let parsed: serde_json::Value =
-        serde_json::from_str(command).unwrap_or(serde_json::Value::Null);
-    let command_type = parsed
-        .get("type")
-        .and_then(|value| value.as_str())
-        .unwrap_or("");
-
-    if command_type == "servers.snapshot" {
-        return c_string(
-            serde_json::json!({
-                "type": "servers.snapshot",
-                "payload": load_server_config(),
-            })
-            .to_string(),
-        );
-    }
-
-    if command_type == "servers.save" {
-        let payload = parsed.get("payload").unwrap_or(&serde_json::Value::Null);
-        return match save_server_config_command(payload) {
-            Ok(configuration) => c_string(
-                serde_json::json!({
-                    "type": "servers.saved",
-                    "payload": configuration,
-                })
-                .to_string(),
-            ),
-            Err(message) => c_string(
-                serde_json::json!({
-                    "type": "error",
-                    "message": message,
-                })
-                .to_string(),
-            ),
-        };
-    }
-
-    if command_type == "ipc.handle" {
-        let message = parsed.get("payload").unwrap_or(&serde_json::Value::Null);
-        let context = parsed.get("context").unwrap_or(&serde_json::Value::Null);
-        return c_string(handle_ipc_message(message, context).to_string());
-    }
-
-    if command_type == "ipc.context" {
-        let payload = parsed.get("payload").unwrap_or(&serde_json::Value::Null);
-        return c_string(update_ipc_context(payload).to_string());
-    }
-
-    if matches!(command_type, "server.start" | "server.stop") {
-        let guard = state().lock().unwrap();
-        let callback = guard.as_ref().and_then(|core| core.callback);
-        let callback_context = guard
-            .as_ref()
-            .map(|core| core.callback_context)
-            .unwrap_or_default();
-        drop(guard);
-        if let Some(response) = supervisor_command(
-            command_type,
-            parsed.get("payload").unwrap_or(&serde_json::Value::Null),
-            callback,
-            callback_context,
-        ) {
-            return c_string(response.to_string());
-        }
-    }
-
-    if command_type == "server.launchPlan" {
-        let payload = parsed.get("payload").unwrap_or(&serde_json::Value::Null);
-        return c_string(launch_plan_command(payload).to_string());
-    }
-
-    if let Some(response) = readiness_command(
-        command_type,
-        parsed.get("payload").unwrap_or(&serde_json::Value::Null),
-    ) {
-        return c_string(response.to_string());
-    }
-
-    if let Some(response) = route_command(
-        command_type,
-        parsed.get("payload").unwrap_or(&serde_json::Value::Null),
-    ) {
-        return c_string(response.to_string());
-    }
-
-    if let Some(response) = proxy_command(
-        command_type,
-        parsed.get("payload").unwrap_or(&serde_json::Value::Null),
-    ) {
-        return c_string(response.to_string());
-    }
-
-    if let Some(response) = dev_command(
-        command_type,
-        parsed.get("payload").unwrap_or(&serde_json::Value::Null),
-    ) {
-        return c_string(response.to_string());
-    }
-
-    if let Some(response) = project_command(
-        command_type,
-        parsed.get("payload").unwrap_or(&serde_json::Value::Null),
-    ) {
-        return c_string(response.to_string());
-    }
-
-    let guard = state().lock().unwrap();
-    let Some(started_at_ms) = guard.as_ref().map(|core| core.started_at_ms) else {
-        return c_string(r#"{"type":"error","message":"rack core is not running"}"#.to_string());
-    };
-    drop(guard);
-
-    if command_type == "state.snapshot" {
-        let servers = load_server_config().servers;
-        return c_string(format!(
-            r#"{{"type":"state.snapshot","payload":{{"backend":"rust","started_at_ms":{},"servers":{},"functions":{}}}}}"#,
-            started_at_ms,
-            serde_json::to_string(&servers).unwrap_or_else(|_| "[]".to_string()),
-            function_snapshot_json()
-        ));
-    }
-
-    if command_type == "function.http" {
-        let payload = parsed.get("payload").unwrap_or(&serde_json::Value::Null);
-        return c_string(http_function_response(payload).to_string());
-    }
-
-    c_string(format!(
-        r#"{{"type":"ack","payload":{{"backend":"rust","command":{}}}}}"#,
-        if command.is_empty() { "null" } else { command }
-    ))
+    c_string(command::handle_command(command))
 }
 
 #[no_mangle]
@@ -289,4 +150,22 @@ pub extern "C" fn rack_core_free_string(value: *mut c_char) {
     unsafe {
         drop(CString::from_raw(value));
     }
+}
+
+pub(crate) fn callback_info() -> (Option<EventCallback>, usize) {
+    let guard = state().lock().unwrap();
+    let callback = guard.as_ref().and_then(|core| core.callback);
+    let callback_context = guard
+        .as_ref()
+        .map(|core| core.callback_context)
+        .unwrap_or_default();
+    (callback, callback_context)
+}
+
+pub(crate) fn started_at_ms() -> Option<u128> {
+    state()
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|core| core.started_at_ms)
 }

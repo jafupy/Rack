@@ -102,6 +102,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let plan = decodeServerLaunchPlan(payload["plan"])
             store.handleServerExit(id: id, status: Int32(status), plan: plan)
 
+        case "server.ready":
+            guard let idString = payload["id"] as? String,
+                  let id = UUID(uuidString: idString),
+                  let pid = payload["pid"] as? Int
+            else { return }
+            store.markServerReady(id: id, pid: Int32(pid))
+
+        case "server.failed":
+            guard let idString = payload["id"] as? String,
+                  let id = UUID(uuidString: idString)
+            else { return }
+            store.markServerFailed(
+                id: id,
+                message: (payload["message"] as? String) ?? "Server failed"
+            )
+
         default:
             break
         }

@@ -27,8 +27,7 @@ enum NameInferrer {
               let sanitizedName = payload["sanitizedName"] as? String,
               let localURL = payload["localURL"] as? String
         else {
-            let fallback = directory.lastPathComponent.lowercased().replacingOccurrences(of: " ", with: "-")
-            return InferredProject(name: fallback, sanitizedName: fallback, localURL: "http://\(fallback).localhost")
+            return InferredProject(name: directory.lastPathComponent, sanitizedName: "", localURL: "")
         }
 
         return InferredProject(name: name, sanitizedName: sanitizedName, localURL: localURL)

@@ -47,7 +47,7 @@ pub(crate) fn probe_port(port: u16) -> bool {
         || TcpStream::connect_timeout(&v6.into(), Duration::from_millis(50)).is_ok()
 }
 
-fn probe_unix_socket(path: &str) -> bool {
+pub(crate) fn probe_unix_socket(path: &str) -> bool {
     UnixStream::connect(path).is_ok()
 }
 

@@ -55,26 +55,58 @@ struct ServerConfiguration: Codable, Identifiable, Equatable {
             .map(String.init)
     }
 
-    /// Subdomain used for routing — custom if set, otherwise derived from name.
+    /// Subdomain used for routing. Rust owns the routing rules; Swift only displays the result.
     var routeSubdomain: String {
-        let raw = customDomain.isEmpty ? name : customDomain
-        let trimmed = raw.lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: " ", with: "-")
-        return trimmed.hasSuffix(".localhost")
-            ? String(trimmed.dropLast(".localhost".count))
-            : trimmed
+        routeInfo?.routeSubdomain ?? ""
     }
 
-    /// The .localhost URL served by the proxy. Omits the port if port-80 forwarding is active.
+    /// The .localhost URL served by the proxy. Rust owns the URL rules; Swift only displays the result.
     var localURL: String {
-        if UserDefaults.standard.bool(forKey: "standardPortsEnabled") {
-            return "http://\(routeSubdomain).localhost"
-        }
-        return "http://\(routeSubdomain).localhost:\(ProxyServer.boundPort)"
+        routeInfo?.localURL ?? ""
+    }
+
+    private var routeInfo: CoreServerRouteInfoReply.Payload? {
+        let context = CoreServerRouteInfoContext(
+            boundPort: ProxyServer.boundPort,
+            standardPortsEnabled: UserDefaults.standard.bool(forKey: "standardPortsEnabled")
+        )
+        let payload = CoreServerRouteInfoRequest(config: self, context: context)
+        let command = CoreServerRouteInfoCommand(type: "server.routeInfo", payload: payload)
+
+        guard let data = try? JSONEncoder().encode(command),
+            let json = String(data: data, encoding: .utf8),
+            let response = RackCore.commandSync(json),
+            let responseData = response.data(using: .utf8)
+        else { return nil }
+
+        return try? JSONDecoder().decode(CoreServerRouteInfoReply.self, from: responseData).payload
     }
 }
 
 struct PersistedConfiguration: Codable {
     var servers: [ServerConfiguration]
+}
+
+private struct CoreServerRouteInfoCommand: Encodable {
+    var type: String
+    var payload: CoreServerRouteInfoRequest
+}
+
+private struct CoreServerRouteInfoRequest: Encodable {
+    var config: ServerConfiguration
+    var context: CoreServerRouteInfoContext
+}
+
+private struct CoreServerRouteInfoContext: Encodable {
+    var boundPort: Int
+    var standardPortsEnabled: Bool
+}
+
+private struct CoreServerRouteInfoReply: Decodable {
+    struct Payload: Decodable {
+        var routeSubdomain: String
+        var localURL: String
+    }
+
+    var payload: Payload
 }
