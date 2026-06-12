@@ -2,6 +2,7 @@ import AppKit
 import Darwin
 import Foundation
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class ServerStore: ObservableObject {
@@ -54,6 +55,9 @@ final class ServerStore: ObservableObject {
 
     private var processes: [ServerConfiguration.ID: ServerProcess] = [:]
     private var readyTasks: [ServerConfiguration.ID: Task<Void, Never>] = [:]
+    private var restartTasks: [ServerConfiguration.ID: Task<Void, Never>] = [:]
+    private var restartAttempts: [ServerConfiguration.ID: Int] = [:]
+    private var intentionallyStoppingServers: Set<ServerConfiguration.ID> = []
     private var logFilePaths: [ServerConfiguration.ID: URL] = [:]
     private var logFileHandles: [ServerConfiguration.ID: FileHandle] = [:]
     private var terminationSignalSources: [DispatchSourceSignal] = []
@@ -73,6 +77,7 @@ final class ServerStore: ObservableObject {
             autoStartServers()
         }
 
+        requestNotificationAuthorization()
         installTerminationSignalHandlers()
     }
 
@@ -162,6 +167,10 @@ final class ServerStore: ObservableObject {
     }
 
     func startServer(id: ServerConfiguration.ID) {
+        startServer(id: id, isAutomaticRestart: false)
+    }
+
+    private func startServer(id: ServerConfiguration.ID, isAutomaticRestart: Bool) {
         guard let config = servers.first(where: { $0.id == id }) else { return }
         guard !config.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             statuses[id] = .failed(message: "Missing command")
@@ -169,8 +178,19 @@ final class ServerStore: ObservableObject {
         }
         guard processes[id] == nil else { return }
 
+        intentionallyStoppingServers.remove(id)
+        if !isAutomaticRestart {
+            restartAttempts[id] = 0
+            restartTasks[id]?.cancel()
+            restartTasks[id] = nil
+        }
+
         statuses[id] = .starting
-        logs[id] = ""
+        if isAutomaticRestart {
+            logs[id, default: ""] += "\nRestarting after crash...\n"
+        } else {
+            logs[id] = ""
+        }
 
         let subdomain = config.routeSubdomain
 
@@ -219,10 +239,12 @@ final class ServerStore: ObservableObject {
             },
             exitHandler: { [weak self] status in
                 guard let self else { return }
-                self.processes[id] = nil
-                self.statuses[id] = status == 0 ? .stopped : .failed(message: "Exit \(status)")
-                RouteRegistry.shared.unregister(name: subdomain)
-                try? FileManager.default.removeItem(atPath: socketPath)
+                self.handleProcessExit(
+                    id: id,
+                    status: status,
+                    subdomain: subdomain,
+                    socketPath: socketPath
+                )
             }
         )
 
@@ -252,16 +274,24 @@ final class ServerStore: ObservableObject {
     func stopServer(id: ServerConfiguration.ID) {
         readyTasks[id]?.cancel()
         readyTasks[id] = nil
+        restartTasks[id]?.cancel()
+        restartTasks[id] = nil
+        restartAttempts[id] = 0
+        intentionallyStoppingServers.insert(id)
         if let config = servers.first(where: { $0.id == id }) {
             let subdomain = config.routeSubdomain
             RouteRegistry.shared.unregister(name: subdomain)
             try? FileManager.default.removeItem(atPath: Self.socketPath(for: subdomain))
         }
-        processes[id]?.stop()
+        let process = processes[id]
+        process?.stop()
         processes[id] = nil
         statuses[id] = .stopped
         try? logFileHandles[id]?.close()
         logFileHandles[id] = nil
+        if process == nil {
+            intentionallyStoppingServers.remove(id)
+        }
     }
 
     func logFilePath(for id: ServerConfiguration.ID) -> URL? {
@@ -389,6 +419,97 @@ final class ServerStore: ObservableObject {
         }
     }
 
+    private func handleProcessExit(
+        id: ServerConfiguration.ID,
+        status: Int32,
+        subdomain: String,
+        socketPath: String
+    ) {
+        processes[id] = nil
+        readyTasks[id]?.cancel()
+        readyTasks[id] = nil
+        RouteRegistry.shared.unregister(name: subdomain)
+        try? FileManager.default.removeItem(atPath: socketPath)
+        try? logFileHandles[id]?.close()
+        logFileHandles[id] = nil
+
+        if intentionallyStoppingServers.remove(id) != nil {
+            statuses[id] = .stopped
+            return
+        }
+
+        guard status != 0 else {
+            statuses[id] = .stopped
+            restartAttempts[id] = 0
+            return
+        }
+
+        scheduleRestart(id: id, exitStatus: status)
+    }
+
+    private func scheduleRestart(id: ServerConfiguration.ID, exitStatus: Int32) {
+        guard servers.contains(where: { $0.id == id }) else { return }
+
+        let attempt = (restartAttempts[id] ?? 0) + 1
+        restartAttempts[id] = attempt
+
+        guard attempt <= 3 else {
+            restartAttempts[id] = 0
+            statuses[id] = .failed(message: "Exit \(exitStatus)")
+            notifyServerCrash(id: id, exitStatus: exitStatus, gaveUp: true)
+            return
+        }
+
+        let delaySeconds = min(1 << (attempt - 1), 8)
+        statuses[id] = .failed(message: "Exit \(exitStatus), restarting in \(delaySeconds)s")
+        notifyServerCrash(id: id, exitStatus: exitStatus, gaveUp: false, attempt: attempt)
+
+        restartTasks[id]?.cancel()
+        restartTasks[id] = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delaySeconds))
+            } catch {
+                return
+            }
+            await MainActor.run {
+                guard let self, self.processes[id] == nil else { return }
+                self.restartTasks[id] = nil
+                self.startServer(id: id, isAutomaticRestart: true)
+            }
+        }
+    }
+
+    private func requestNotificationAuthorization() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    private func notifyServerCrash(
+        id: ServerConfiguration.ID,
+        exitStatus: Int32,
+        gaveUp: Bool,
+        attempt: Int? = nil
+    ) {
+        guard let server = servers.first(where: { $0.id == id }) else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = gaveUp ? "Rack stopped restarting \(server.name)" : "\(server.name) crashed"
+        if gaveUp {
+            content.body = "The server exited with status \(exitStatus) after 3 restart attempts."
+        } else if let attempt {
+            content.body = "The server exited with status \(exitStatus). Restart attempt \(attempt) of 3 is scheduled."
+        } else {
+            content.body = "The server exited with status \(exitStatus)."
+        }
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "rack.server-crash.\(id.uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
     private func load() {
         migrateIfNeeded()
         guard FileManager.default.fileExists(atPath: configurationURL.path()) else {
@@ -464,13 +585,15 @@ final class ServerStore: ObservableObject {
         return 4000
     }
 
-    /// Rack-bridge mode: poll for the unix socket to appear, then mark running.
+    /// Rack-bridge mode: the bridge creates the unix socket after the backend is listening.
     private func awaitServerReadyViaSocket(id: ServerConfiguration.ID, pid: Int32,
                                            subdomain: String, socketPath: String) async {
         for _ in 0..<120 {
             do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
             guard statuses[id] == .starting else { return }
-            let ready = await Task.detached(priority: .utility) { ServerStore.probeUnixSocket(socketPath) }.value
+            let ready = await Task.detached(priority: .utility) {
+                FileManager.default.fileExists(atPath: socketPath)
+            }.value
             if ready {
                 RouteRegistry.shared.updateSocketPath(name: subdomain, socketPath: socketPath)
                 statuses[id] = .running(pid: pid)
@@ -514,25 +637,6 @@ final class ServerStore: ObservableObject {
         }
         if statuses[id] == .starting {
             statuses[id] = .failed(message: "Did not start within 60s")
-        }
-    }
-
-    private nonisolated static func probeUnixSocket(_ path: String) -> Bool {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutableBytes(of: &addr.sun_path) { dest in
-            path.withCString { src in
-                guard let base = dest.baseAddress else { return }
-                strlcpy(base.assumingMemoryBound(to: CChar.self), src, dest.count)
-            }
-        }
-        return withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) == 0
-            }
         }
     }
 

@@ -1,14 +1,8 @@
 # Rack.
 
-## networking
-- [ ] DNS responder (UDP 53535, hand-rolled, `.r` only)
-- [ ] IP pool (`127.255.255.1`–`.254`, step down on exhaust)
-- [ ] `lo0` alias mgmt + `/etc/resolver/r` setup (SMJobBless or osascript fallback)
-- [ ] Inject `RACK_HOST`/`RACK_PORT` into spawned processes
-
 ## resilience
-- [ ] Crash notifications (UNUserNotificationCenter)
-- [ ] Auto-restart with backoff (3 tries, then notify and stop)
+- [x] Crash notifications (UNUserNotificationCenter)
+- [x] Auto-restart with backoff (3 tries, then notify and stop)
 
 ## control
 - [ ] Server groups (start/stop/restart cluster)
