@@ -10,6 +10,12 @@ final class RackCore {
 
     private init() {}
 
+    nonisolated static func commandSync(_ json: String) -> String? {
+        guard let response = rack_core_command(json) else { return nil }
+        defer { rack_core_free_string(response) }
+        return String(cString: response)
+    }
+
     func start(eventHandler: @escaping (String) -> Void) {
         guard !isStarted else { return }
         self.eventHandler = eventHandler
@@ -28,9 +34,7 @@ final class RackCore {
     }
 
     func command(_ json: String) -> String? {
-        guard let response = rack_core_command(json) else { return nil }
-        defer { rack_core_free_string(response) }
-        return String(cString: response)
+        Self.commandSync(json)
     }
 
     func stop() {

@@ -30,10 +30,58 @@ final class ServerStore: ObservableObject {
 
     private struct CoreSnapshotReply: Decodable {
         struct Payload: Decodable {
+            var servers: [ServerConfiguration]
             var functions: [FunctionSummary]
         }
 
         var payload: Payload
+    }
+
+    private struct CoreServersReply: Decodable {
+        var payload: PersistedConfiguration
+    }
+
+    private struct CoreCommand<Payload: Encodable>: Encodable {
+        var type: String
+        var payload: Payload
+    }
+
+    private struct CoreIPCContext: Encodable {
+        struct Status: Encodable {
+            var id: String
+            var running: Bool
+            var pid: Int32?
+        }
+
+        var boundPort: Int
+        var standardPortsEnabled: Bool
+        var statuses: [Status]
+    }
+
+    private struct CoreLaunchContext: Encodable {
+        var bridgePath: String?
+    }
+
+    private struct CoreLaunchPlanRequest: Encodable {
+        var config: ServerConfiguration
+        var context: CoreLaunchContext
+    }
+
+    private struct CoreLaunchPlanReply: Decodable {
+        var payload: ServerLaunchPlan
+    }
+
+    private struct CoreServerStartReply: Decodable {
+        struct Payload: Decodable {
+            var pid: Int32
+            var plan: ServerLaunchPlan
+        }
+
+        var payload: Payload
+    }
+
+    private struct CoreServerStopRequest: Encodable {
+        var id: String
     }
 
     private enum AppPaths {
@@ -41,8 +89,6 @@ final class ServerStore: ObservableObject {
         static let temporaryDirectoryName = "Rack"
         static let commandFilePrefix = "rack"
         static let storageDirectoryName = "rack"
-        static let legacyStorageDirectoryName = "server-bar"
-        static let legacyAppSupportDirectoryName = "ServerBar"
         static let legacyDefaultsBundleID = "dev.jafu.ServerBar"
     }
 
@@ -52,7 +98,7 @@ final class ServerStore: ObservableObject {
     @Published private(set) var statuses: [ServerConfiguration.ID: ServerStatus] = [:]
     @Published private(set) var logs: [ServerConfiguration.ID: String] = [:]
 
-    private var processes: [ServerConfiguration.ID: ServerProcess] = [:]
+    private var runningPlans: [ServerConfiguration.ID: ServerLaunchPlan] = [:]
     private var readyTasks: [ServerConfiguration.ID: Task<Void, Never>] = [:]
     private var logFilePaths: [ServerConfiguration.ID: URL] = [:]
     private var logFileHandles: [ServerConfiguration.ID: FileHandle] = [:]
@@ -68,6 +114,7 @@ final class ServerStore: ObservableObject {
         if selectedServerID == nil {
             selectedServerID = servers.first?.id
         }
+        syncIPCContext()
 
         Task {
             autoStartServers()
@@ -165,27 +212,31 @@ final class ServerStore: ObservableObject {
         guard let config = servers.first(where: { $0.id == id }) else { return }
         guard !config.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             statuses[id] = .failed(message: "Missing command")
+            syncIPCContext()
             return
         }
-        guard processes[id] == nil else { return }
+        guard runningPlans[id] == nil else { return }
 
         statuses[id] = .starting
         logs[id] = ""
+        syncIPCContext()
 
-        let subdomain = config.routeSubdomain
-
-        let port = config.port ?? allocatePort()
-        let socketPath = Self.socketPath(for: subdomain)
+        let bridgePath = RackBridgeLocator.findRackBridge()
+        guard let plan = launchPlan(for: config, bridgePath: bridgePath) else {
+            statuses[id] = .failed(message: "Could not build launch plan")
+            syncIPCContext()
+            return
+        }
 
         // Remove any stale socket from a previous run.
-        try? FileManager.default.removeItem(atPath: socketPath)
+        try? FileManager.default.removeItem(atPath: plan.socketPath)
         try? FileManager.default.createDirectory(
             atPath: "/tmp/rack", withIntermediateDirectories: true, attributes: nil)
 
         // Register route immediately with empty socketPath / zero tcpPort.
         // awaitServerReady fills these in once the server is listening.
         RouteRegistry.shared.register(Route(
-            name: subdomain,
+            name: plan.subdomain,
             socketPath: "",
             tcpPort: 0,
             workingDirectory: config.workingDirectory,
@@ -200,52 +251,27 @@ final class ServerStore: ObservableObject {
         logFilePaths[id] = logURL
         logFileHandles[id] = try? FileHandle(forWritingTo: logURL)
 
-        let useBridge = ServerProcess.findRackBridge() != nil
-
-        let process = ServerProcess(
-            configuration: config,
-            socketPath: socketPath,
-            port: port,
-            outputHandler: { [weak self] output in
-                guard let self else { return }
-                self.logs[id, default: ""] += output
-                if let handle = self.logFileHandles[id], let data = output.data(using: .utf8) {
-                    try? handle.write(contentsOf: data)
-                }
-                let components = self.logs[id, default: ""].split(separator: "\n", omittingEmptySubsequences: false)
-                if components.count > 400 {
-                    self.logs[id] = components.suffix(400).joined(separator: "\n")
-                }
-            },
-            exitHandler: { [weak self] status in
-                guard let self else { return }
-                self.processes[id] = nil
-                self.statuses[id] = status == 0 ? .stopped : .failed(message: "Exit \(status)")
-                RouteRegistry.shared.unregister(name: subdomain)
-                try? FileManager.default.removeItem(atPath: socketPath)
-            }
-        )
-
         // For TCP fallback (no rack-bridge): snapshot ports before launch.
-        let portSnapshot = (!useBridge && config.port == nil) ? ServerStore.loopbackListeningPorts() : []
+        let portSnapshot = (!plan.useBridge && config.port == nil) ? ServerStore.loopbackListeningPorts() : []
 
-        do {
-            try process.start()
-            processes[id] = process
-            let pid = process.process.processIdentifier
-            readyTasks[id] = Task { [weak self] in
-                if useBridge {
-                    await self?.awaitServerReadyViaSocket(
-                        id: id, pid: pid, subdomain: subdomain, socketPath: socketPath)
-                } else {
-                    await self?.awaitServerReadyViaTCP(
-                        id: id, pid: pid, subdomain: subdomain,
-                        explicitPort: config.port ?? port, portSnapshot: portSnapshot)
-                }
+        guard let start = startServerInCore(config: config, bridgePath: bridgePath) else {
+            statuses[id] = .failed(message: "Could not launch process")
+            RouteRegistry.shared.unregister(name: plan.subdomain)
+            syncIPCContext()
+            return
+        }
+
+        runningPlans[id] = start.plan
+        let pid = start.pid
+        readyTasks[id] = Task { [weak self] in
+            if start.plan.useBridge {
+                await self?.awaitServerReadyViaSocket(
+                    id: id, pid: pid, subdomain: start.plan.subdomain, socketPath: start.plan.socketPath)
+            } else {
+                await self?.awaitServerReadyViaTCP(
+                    id: id, pid: pid, subdomain: start.plan.subdomain,
+                    explicitPort: config.port ?? start.plan.port, portSnapshot: portSnapshot)
             }
-        } catch {
-            statuses[id] = .failed(message: error.localizedDescription)
-            RouteRegistry.shared.unregister(name: subdomain)
         }
     }
 
@@ -257,11 +283,37 @@ final class ServerStore: ObservableObject {
             RouteRegistry.shared.unregister(name: subdomain)
             try? FileManager.default.removeItem(atPath: Self.socketPath(for: subdomain))
         }
-        processes[id]?.stop()
-        processes[id] = nil
+        stopServerInCore(id: id)
+        runningPlans[id] = nil
         statuses[id] = .stopped
         try? logFileHandles[id]?.close()
         logFileHandles[id] = nil
+        syncIPCContext()
+    }
+
+    func appendServerOutput(id: ServerConfiguration.ID, output: String) {
+        logs[id, default: ""] += output
+        if let handle = logFileHandles[id], let data = output.data(using: .utf8) {
+            try? handle.write(contentsOf: data)
+        }
+        let components = logs[id, default: ""].split(separator: "\n", omittingEmptySubsequences: false)
+        if components.count > 400 {
+            logs[id] = components.suffix(400).joined(separator: "\n")
+        }
+    }
+
+    func handleServerExit(id: ServerConfiguration.ID, status: Int32, plan: ServerLaunchPlan?) {
+        readyTasks[id]?.cancel()
+        readyTasks[id] = nil
+        runningPlans[id] = nil
+        statuses[id] = status == 0 ? .stopped : .failed(message: "Exit \(status)")
+        if let plan {
+            RouteRegistry.shared.unregister(name: plan.subdomain)
+            try? FileManager.default.removeItem(atPath: plan.socketPath)
+        }
+        try? logFileHandles[id]?.close()
+        logFileHandles[id] = nil
+        syncIPCContext()
     }
 
     func logFilePath(for id: ServerConfiguration.ID) -> URL? {
@@ -383,6 +435,118 @@ final class ServerStore: ObservableObject {
         functions = snapshot.payload.functions
     }
 
+    func reloadServers() {
+        load()
+        if !servers.contains(where: { $0.id == selectedServerID }) {
+            selectedServerID = servers.first?.id
+        }
+        syncIPCContext()
+    }
+
+    func syncIPCContext() {
+        let statuses = servers.map { config in
+            let status = status(for: config.id)
+            let pid: Int32?
+            if case .running(let runningPID) = status {
+                pid = runningPID
+            } else {
+                pid = nil
+            }
+            return CoreIPCContext.Status(
+                id: config.id.uuidString,
+                running: status.isRunning,
+                pid: pid
+            )
+        }
+        let context = CoreIPCContext(
+            boundPort: ProxyServer.boundPort,
+            standardPortsEnabled: UserDefaults.standard.bool(forKey: "standardPortsEnabled"),
+            statuses: statuses
+        )
+        do {
+            let command = CoreCommand(type: "ipc.context", payload: context)
+            let data = try encoder.encode(command)
+            guard let json = String(data: data, encoding: .utf8) else { return }
+            _ = RackCore.shared.command(json)
+        } catch {
+            return
+        }
+    }
+
+    func applyIPCHostAction(type: String, idString: String) {
+        guard let id = UUID(uuidString: idString) else { return }
+        switch type {
+        case "start":
+            if !servers.contains(where: { $0.id == id }) {
+                reloadServers()
+            }
+            startServer(id: id)
+        case "stop":
+            stopServer(id: id)
+        case "remove":
+            stopServer(id: id)
+            reloadServers()
+        default:
+            break
+        }
+    }
+
+    private func launchPlan(for config: ServerConfiguration, bridgePath: String?) -> ServerLaunchPlan? {
+        do {
+            let command = CoreCommand(
+                type: "server.launchPlan",
+                payload: CoreLaunchPlanRequest(
+                    config: config,
+                    context: CoreLaunchContext(bridgePath: bridgePath)
+                )
+            )
+            let data = try encoder.encode(command)
+            guard let json = String(data: data, encoding: .utf8),
+                  let response = RackCore.shared.command(json),
+                  let responseData = response.data(using: .utf8),
+                  let reply = try? decoder.decode(CoreLaunchPlanReply.self, from: responseData)
+            else { return nil }
+            return reply.payload
+        } catch {
+            return nil
+        }
+    }
+
+    private func startServerInCore(config: ServerConfiguration, bridgePath: String?) -> CoreServerStartReply.Payload? {
+        do {
+            let command = CoreCommand(
+                type: "server.start",
+                payload: CoreLaunchPlanRequest(
+                    config: config,
+                    context: CoreLaunchContext(bridgePath: bridgePath)
+                )
+            )
+            let data = try encoder.encode(command)
+            guard let json = String(data: data, encoding: .utf8),
+                  let response = RackCore.shared.command(json),
+                  let responseData = response.data(using: .utf8),
+                  let reply = try? decoder.decode(CoreServerStartReply.self, from: responseData)
+            else { return nil }
+            return reply.payload
+        } catch {
+            return nil
+        }
+    }
+
+    private func stopServerInCore(id: ServerConfiguration.ID) {
+        do {
+            let command = CoreCommand(
+                type: "server.stop",
+                payload: CoreServerStopRequest(id: id.uuidString)
+            )
+            let data = try encoder.encode(command)
+            guard let json = String(data: data, encoding: .utf8) else { return }
+            _ = RackCore.shared.command(json)
+        } catch {
+            return
+        }
+    }
+
     private func autoStartServers() {
         for server in servers where server.autoStart {
             startServer(id: server.id)
@@ -390,47 +554,19 @@ final class ServerStore: ObservableObject {
     }
 
     private func load() {
-        migrateIfNeeded()
-        guard FileManager.default.fileExists(atPath: configurationURL.path()) else {
+        migrateDefaultsIfNeeded()
+        guard let json = RackCore.shared.command(#"{"type":"servers.snapshot"}"#),
+              let data = json.data(using: .utf8),
+              let reply = try? decoder.decode(CoreServersReply.self, from: data)
+        else {
             servers = []
             return
         }
 
-        do {
-            let data = try Data(contentsOf: configurationURL)
-            let configuration = try decoder.decode(PersistedConfiguration.self, from: data)
-            servers = configuration.servers
-            for server in servers {
-                statuses[server.id] = .stopped
-            }
-        } catch {
-            servers = []
+        servers = reply.payload.servers
+        for server in servers {
+            statuses[server.id] = .stopped
         }
-    }
-
-    private func migrateIfNeeded() {
-        migrateConfigurationIfNeeded()
-        migrateDefaultsIfNeeded()
-    }
-
-    private func migrateConfigurationIfNeeded() {
-        let fileManager = FileManager.default
-        let new = configurationURL
-        guard !fileManager.fileExists(atPath: new.path) else { return }
-
-        var legacyCandidates = [
-            FileManager.default.homeDirectoryForCurrentUser
-                .appending(path: ".config/\(AppPaths.legacyStorageDirectoryName)/config.json"),
-        ]
-        if let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-            legacyCandidates.append(
-                appSupportURL.appending(path: "\(AppPaths.legacyAppSupportDirectoryName)/servers.json")
-            )
-        }
-
-        guard let old = legacyCandidates.first(where: { fileManager.fileExists(atPath: $0.path) }) else { return }
-        try? fileManager.createDirectory(at: new.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? fileManager.copyItem(at: old, to: new)
     }
 
     private func migrateDefaultsIfNeeded() {
@@ -444,8 +580,18 @@ final class ServerStore: ObservableObject {
 
     private func save() {
         do {
-            let data = try encoder.encode(PersistedConfiguration(servers: servers))
-            try data.write(to: configurationURL, options: .atomic)
+            let command = CoreCommand(
+                type: "servers.save",
+                payload: PersistedConfiguration(servers: servers)
+            )
+            let data = try encoder.encode(command)
+            guard let json = String(data: data, encoding: .utf8),
+                  let response = RackCore.shared.command(json),
+                  !response.contains(#""type":"error""#)
+            else {
+                NSSound.beep()
+                return
+            }
         } catch {
             NSSound.beep()
         }
@@ -455,13 +601,6 @@ final class ServerStore: ObservableObject {
 
     private nonisolated static func socketPath(for subdomain: String) -> String {
         "/tmp/rack/\(subdomain).sock"
-    }
-
-    private func allocatePort() -> Int {
-        for port in (4000...4999).shuffled() {
-            if !ServerStore.probePort(port) { return port }
-        }
-        return 4000
     }
 
     /// Rack-bridge mode: poll for the unix socket to appear, then mark running.
@@ -474,11 +613,13 @@ final class ServerStore: ObservableObject {
             if ready {
                 RouteRegistry.shared.updateSocketPath(name: subdomain, socketPath: socketPath)
                 statuses[id] = .running(pid: pid)
+                syncIPCContext()
                 return
             }
         }
         if statuses[id] == .starting {
             statuses[id] = .failed(message: "Did not start within 60s")
+            syncIPCContext()
         }
     }
 
@@ -494,6 +635,7 @@ final class ServerStore: ObservableObject {
                 if up {
                     RouteRegistry.shared.updatePort(name: subdomain, tcpPort: explicitPort)
                     statuses[id] = .running(pid: pid)
+                    syncIPCContext()
                     return
                 }
             }
@@ -508,96 +650,50 @@ final class ServerStore: ObservableObject {
                 if let port = newPorts.sorted().first {
                     RouteRegistry.shared.updatePort(name: subdomain, tcpPort: port)
                     statuses[id] = .running(pid: pid)
+                    syncIPCContext()
                     return
                 }
             }
         }
         if statuses[id] == .starting {
             statuses[id] = .failed(message: "Did not start within 60s")
+            syncIPCContext()
         }
     }
 
     private nonisolated static func probeUnixSocket(_ path: String) -> Bool {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutableBytes(of: &addr.sun_path) { dest in
-            path.withCString { src in
-                guard let base = dest.baseAddress else { return }
-                strlcpy(base.assumingMemoryBound(to: CChar.self), src, dest.count)
-            }
-        }
-        return withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) == 0
-            }
-        }
+        coreBoolCommand(type: "server.probeUnixSocket", payload: ["path": path])
     }
 
     private nonisolated static func probePort(_ port: Int) -> Bool {
-        if probeIPv4Port(port) { return true }
-        return probeIPv6Port(port)
-    }
-
-    private nonisolated static func probeIPv4Port(_ port: Int) -> Bool {
-        var addr = sockaddr_in()
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = in_port_t(port).bigEndian
-        addr.sin_addr.s_addr = in_addr_t(0x7f000001).bigEndian
-        let sock = socket(AF_INET, SOCK_STREAM, 0)
-        guard sock >= 0 else { return false }
-        defer { close(sock) }
-        return withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
-            }
-        }
-    }
-
-    private nonisolated static func probeIPv6Port(_ port: Int) -> Bool {
-        var addr = sockaddr_in6()
-        addr.sin6_family = sa_family_t(AF_INET6)
-        addr.sin6_port = in_port_t(port).bigEndian
-        addr.sin6_addr = in6addr_loopback
-        let sock = socket(AF_INET6, SOCK_STREAM, 0)
-        guard sock >= 0 else { return false }
-        defer { close(sock) }
-        return withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in6>.size)) == 0
-            }
-        }
+        coreBoolCommand(type: "server.probePort", payload: ["port": port])
     }
 
     private nonisolated static func loopbackListeningPorts() -> Set<Int> {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        p.arguments = ["-iTCP", "-sTCP:LISTEN", "-n", "-P", "-F", "n"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = Pipe()
-        guard (try? p.run()) != nil else { return [] }
-        p.waitUntilExit()
-        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        var ports = Set<Int>()
-        for line in out.components(separatedBy: "\n") {
-            guard line.hasPrefix("n") else { continue }
-            let addr = String(line.dropFirst())
-            let isLoopback = addr.hasPrefix("127.0.0.1:")
-                || addr.hasPrefix("*:")
-                || addr.hasPrefix("[::1]:")
-                || addr.hasPrefix("::1:")
-                || addr.hasPrefix("*.")
-            guard isLoopback else { continue }
-            let portStr = addr.components(separatedBy: ":").last?
-                .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-            if let portStr, let port = Int(portStr), port > 1024 {
-                ports.insert(port)
-            }
-        }
-        return ports
+        guard let payload = corePayload(type: "server.loopbackListeningPorts", payload: [:]),
+              let ports = payload as? [Int]
+        else { return [] }
+        return Set(ports)
+    }
+
+    private nonisolated static func coreBoolCommand(type: String, payload: [String: Any]) -> Bool {
+        guard let payload = corePayload(type: type, payload: payload),
+              let object = payload as? [String: Any],
+              let ready = object["ready"] as? Bool
+        else { return false }
+        return ready
+    }
+
+    private nonisolated static func corePayload(type: String, payload: [String: Any]) -> Any? {
+        let command: [String: Any] = ["type": type, "payload": payload]
+        guard JSONSerialization.isValidJSONObject(command),
+              let data = try? JSONSerialization.data(withJSONObject: command),
+              let json = String(data: data, encoding: .utf8),
+              let response = RackCore.commandSync(json),
+              let responseData = response.data(using: .utf8),
+              let decoded = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
+        else { return nil }
+        return decoded["payload"]
     }
 
     private func installTerminationSignalHandlers() {

@@ -6,7 +6,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = ServerStore()
     let launchAtLogin = LaunchAtLoginController()
     private let proxy = ProxyServer()
-    private let ipc = IPCServer()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let popover = NSPopover()
 
@@ -14,19 +13,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CLIInstaller.installBundledCLI()
         configureMenuBarWindow()
 
-        RackCore.shared.start { event in
+        RackCore.shared.start { [weak self] event in
             print("RackCore \(event)")
+            self?.handleCoreEvent(event)
         }
         if let snapshot = RackCore.shared.command(#"{"type":"state.snapshot"}"#) {
             print("RackCore \(snapshot)")
         }
         store.reloadFunctions()
+        store.syncIPCContext()
 
-        ipc.store = store
-        ipc.start()
         Task {
             do {
                 try await proxy.start()
+                store.syncIPCContext()
             } catch {
                 print("RackProxy failed to start: \(error)")
                 store.stopAllServers()
@@ -65,6 +65,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
+    }
+
+    private func handleCoreEvent(_ event: String) {
+        guard let data = event.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let eventType = object["type"] as? String,
+              let payload = object["payload"] as? [String: Any]
+        else { return }
+
+        switch eventType {
+        case "ipc.action":
+            guard let type = payload["type"] as? String,
+                  let id = payload["id"] as? String
+            else { return }
+            store.applyIPCHostAction(type: type, idString: id)
+
+        case "server.output":
+            guard let idString = payload["id"] as? String,
+                  let id = UUID(uuidString: idString),
+                  let output = payload["output"] as? String
+            else { return }
+            store.appendServerOutput(id: id, output: output)
+
+        case "server.exited":
+            guard let idString = payload["id"] as? String,
+                  let id = UUID(uuidString: idString),
+                  let status = payload["status"] as? Int
+            else { return }
+            let plan = decodeServerLaunchPlan(payload["plan"])
+            store.handleServerExit(id: id, status: Int32(status), plan: plan)
+
+        default:
+            break
+        }
+    }
+
+    private func decodeServerLaunchPlan(_ value: Any?) -> ServerLaunchPlan? {
+        guard let value, JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value)
+        else { return nil }
+        return try? JSONDecoder().decode(ServerLaunchPlan.self, from: data)
     }
 }
 

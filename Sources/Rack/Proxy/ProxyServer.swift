@@ -5,10 +5,59 @@ import NIOPosix
 @preconcurrency import NIOHTTP1
 @preconcurrency import NIOWebSocket
 @preconcurrency import NIOSSL
-import RackCoreFFI
 
 private struct UnsafeSendableBox<Value>: @unchecked Sendable {
     let value: Value
+}
+
+private struct ProxyHostInfo {
+    var routeName: String?
+    var isRackLocalHost: Bool
+    var isLoopbackCandidate: Bool
+}
+
+private enum RustProxy {
+    static func hostInfo(for host: String?) -> ProxyHostInfo {
+        var payload: [String: Any] = [:]
+        if let host {
+            payload["host"] = host
+        }
+        guard let payload = commandPayload(type: "proxy.host", payload: payload),
+              let info = payload["payload"] as? [String: Any]
+        else {
+            return ProxyHostInfo(routeName: nil, isRackLocalHost: false, isLoopbackCandidate: false)
+        }
+
+        return ProxyHostInfo(
+            routeName: info["routeName"] as? String,
+            isRackLocalHost: info["isRackLocalHost"] as? Bool ?? false,
+            isLoopbackCandidate: info["isLoopbackCandidate"] as? Bool ?? false
+        )
+    }
+
+    static func rackLocalRequest(method: String, uri: String, headers: HTTPHeaders, body: String) -> [String: Any]? {
+        let payload: [String: Any] = [
+            "method": method,
+            "uri": uri,
+            "headers": headers.map { [$0.name, $0.value] },
+            "body": body,
+        ]
+        guard let response = commandPayload(type: "proxy.rackLocalRequest", payload: payload) else { return nil }
+        return response["payload"] as? [String: Any]
+    }
+
+    private static func commandPayload(type: String, payload: [String: Any]) -> [String: Any]? {
+        let command: [String: Any] = ["type": type, "payload": payload]
+        guard JSONSerialization.isValidJSONObject(command),
+              let data = try? JSONSerialization.data(withJSONObject: command),
+              let json = String(data: data, encoding: .utf8),
+              let responseJSON = RackCore.commandSync(json),
+              let responseData = responseJSON.data(using: .utf8)
+        else {
+            return nil
+        }
+        return try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
+    }
 }
 
 /// HTTP/1.1 reverse proxy that routes *.localhost to unix sockets.
@@ -355,34 +404,12 @@ final class ProxyServer: @unchecked Sendable {
 }
 
 private func rackRoute(for host: String?) -> Route? {
-    guard let name = rackRouteName(from: host) else { return nil }
+    guard let name = RustProxy.hostInfo(for: host).routeName else { return nil }
     return RouteRegistry.shared.route(for: name)
 }
 
 private func isRackLocalHost(_ host: String?) -> Bool {
-    guard let hostname = rackHostname(from: host) else { return false }
-    return hostname == "rack.local"
-        || hostname == "localhost"
-        || hostname == "127.0.0.1"
-        || hostname == "::1"
-}
-
-private func rackRouteName(from host: String?) -> String? {
-    guard let hostname = rackHostname(from: host), hostname.hasSuffix(".localhost") else { return nil }
-    let name = String(hostname.dropLast(".localhost".count))
-    return name.isEmpty ? nil : name
-}
-
-private func rackHostname(from host: String?) -> String? {
-    guard let host, !host.isEmpty else { return nil }
-    if host.first == "[" {
-        return host.dropFirst().split(separator: "]", maxSplits: 1).first.map {
-            String($0).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
-        }
-    }
-    return host.split(separator: ":", maxSplits: 1).first.map {
-        String($0).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
-    }
+    RustProxy.hostInfo(for: host).isRackLocalHost
 }
 
 private enum RackLocalFunctionError: Error {
@@ -674,8 +701,19 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
     }
 
     private func handleRackLocal(context: ChannelHandlerContext, head: HTTPRequestHead) {
-        let path = normalizeRackLocalPath(head.uri)
-        if path == "/" {
+        let body = bodyBuffer.map { String(buffer: $0) } ?? ""
+        guard let request = RustProxy.rackLocalRequest(
+            method: head.method.rawValue,
+            uri: head.uri,
+            headers: head.headers,
+            body: body
+        ) else {
+            sendError(context: context, status: .internalServerError, body: "rack: function dispatch failed")
+            return
+        }
+
+        switch request["kind"] as? String {
+        case "root":
             sendPlainResponse(
                 context: context,
                 status: .ok,
@@ -683,27 +721,22 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
                 headers: ["content-type": "text/plain"]
             )
             return
-        }
 
-        if path.starts(with: "/_") {
+        case "reserved":
             sendError(context: context, status: .notFound, body: "rack: reserved path")
+            return
+
+        case "function":
+            break
+
+        default:
+            sendError(context: context, status: .internalServerError, body: "rack: function dispatch failed")
             return
         }
 
-        let body = bodyBuffer.map { String(buffer: $0) } ?? ""
-        let request: [String: Any] = [
-            "type": "function.http",
-            "payload": [
-                "method": head.method.rawValue,
-                "path": path,
-                "uri": head.uri,
-                "headers": requestHeaders(from: head.headers),
-                "body": body,
-            ],
-        ]
-
-        guard let data = try? JSONSerialization.data(withJSONObject: request),
-              let command = String(data: data, encoding: .utf8)
+        guard let commandObject = request["command"] as? [String: Any],
+              let commandData = try? JSONSerialization.data(withJSONObject: commandObject),
+              let command = String(data: commandData, encoding: .utf8)
         else {
             sendError(context: context, status: .internalServerError, body: "rack: function dispatch failed")
             return
@@ -737,9 +770,9 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
     }
 
     private func isLoopback(_ host: String?) -> Bool {
-        guard let hostname = rackHostname(from: host), hostname.hasSuffix(".localhost") else { return false }
-        guard let name = rackRouteName(from: host) else { return false }
-        return RouteRegistry.shared.route(for: name) == nil
+        let info = RustProxy.hostInfo(for: host)
+        guard info.isLoopbackCandidate, let routeName = info.routeName else { return false }
+        return RouteRegistry.shared.route(for: routeName) == nil
     }
 
     /// Resolves the host on every attempt so the proxy picks up the port as soon as
@@ -831,23 +864,8 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
         }
     }
 
-    private func normalizeRackLocalPath(_ uri: String) -> String {
-        let rawPath = uri.split(separator: "?", maxSplits: 1).first.map(String.init) ?? "/"
-        var normalized = rawPath.hasPrefix("/") ? rawPath : "/\(rawPath)"
-        while normalized.count > 1, normalized.last == "/" {
-            normalized.removeLast()
-        }
-        return normalized
-    }
-
-    private func rackCoreCommand(_ json: String) -> String? {
-        guard let response = rack_core_command(json) else { return nil }
-        defer { rack_core_free_string(response) }
-        return String(cString: response)
-    }
-
     private func dispatchRackLocalFunction(_ command: String) -> Result<RackLocalFunctionResponse, RackLocalFunctionError> {
-        guard let responseJSON = rackCoreCommand(command),
+        guard let responseJSON = RackCore.commandSync(command),
               let responseData = responseJSON.data(using: .utf8),
               let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
               let payload = response["payload"] as? [String: Any]
@@ -860,19 +878,6 @@ private final class HTTPProxyHandler: ChannelInboundHandler, @unchecked Sendable
             headers: payload["headers"] as? [String: String] ?? ["content-type": "text/plain"],
             body: payload["body"] as? String ?? ""
         ))
-    }
-
-    private func requestHeaders(from headers: HTTPHeaders) -> [String: String] {
-        var result: [String: String] = [:]
-        for header in headers {
-            let name = header.name.lowercased()
-            if let existing = result[name] {
-                result[name] = "\(existing), \(header.value)"
-            } else {
-                result[name] = header.value
-            }
-        }
-        return result
     }
 
     private func sendError(context: ChannelHandlerContext, status: HTTPResponseStatus, body: String) {

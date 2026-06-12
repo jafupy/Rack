@@ -11,83 +11,81 @@ struct Route: Codable, Sendable {
     let addedAt: Date
 }
 
-/// Thread-safe registry mapping server names to their TCP ports.
-/// Uses NSLock so the proxy handler can look up routes synchronously from any thread.
+/// Compatibility facade over the Rust-owned route registry.
 final class RouteRegistry: @unchecked Sendable {
-    private var routes: [String: Route] = [:]
-    private let lock = NSLock()
-    private let storageURL: URL
-
     static let shared = RouteRegistry()
 
-    private init() {
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: ".config/rack")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        storageURL = dir.appending(path: "routes.json")
-        routes = (try? Self.load(from: storageURL)) ?? [:]
-    }
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    private init() {}
 
     func register(_ route: Route) {
-        lock.withLock { routes[route.name] = route }
-        try? persist()
+        _ = command(type: "routes.register", payload: route)
     }
 
     func updatePort(name: String, tcpPort: Int) {
-        lock.withLock {
-            guard let existing = routes[name] else { return }
-            routes[name] = Route(name: existing.name, socketPath: existing.socketPath,
-                                 tcpPort: tcpPort, workingDirectory: existing.workingDirectory,
-                                 addedAt: existing.addedAt)
-        }
-        try? persist()
+        _ = command(type: "routes.updatePort", payload: RoutePortUpdate(name: name, tcpPort: tcpPort))
     }
 
     func updateSocketPath(name: String, socketPath: String) {
-        lock.withLock {
-            guard let existing = routes[name] else { return }
-            routes[name] = Route(name: existing.name, socketPath: socketPath,
-                                 tcpPort: existing.tcpPort, workingDirectory: existing.workingDirectory,
-                                 addedAt: existing.addedAt)
-        }
-        try? persist()
+        _ = command(type: "routes.updateSocketPath", payload: RouteSocketUpdate(name: name, socketPath: socketPath))
     }
 
     func unregister(name: String) {
-        lock.withLock { _ = routes.removeValue(forKey: name) }
-        try? persist()
+        _ = command(type: "routes.unregister", payload: RouteName(name: name))
     }
 
-    /// Synchronous lookup — safe to call from NIO event loops.
+    /// Synchronous lookup; safe to call from NIO event loops.
     func route(for name: String) -> Route? {
-        lock.withLock {
-            // Exact match
-            if let r = routes[name] { return r }
-            // Subdomain fallback: fix-auth.myapp -> myapp
-            let parts = name.split(separator: ".")
-            guard parts.count > 1 else { return nil }
-            let base = parts.dropFirst().joined(separator: ".")
-            return routes[base]
-        }
+        guard let data = command(type: "routes.resolve", payload: RouteName(name: name)) else { return nil }
+        return try? decoder.decode(RouteReply.self, from: data).payload
     }
 
     func allRoutes() -> [Route] {
-        lock.withLock { Array(routes.values) }
+        guard let data = command(type: "routes.list", payload: EmptyPayload()) else { return [] }
+        return (try? decoder.decode(RouteListReply.self, from: data).payload) ?? []
     }
 
     func clearAll() {
-        lock.withLock { routes = [:] }
-        try? persist()
+        _ = command(type: "routes.clear", payload: EmptyPayload())
     }
 
-    private func persist() throws {
-        let snapshot = lock.withLock { routes }
-        let data = try JSONEncoder().encode(snapshot)
-        try data.write(to: storageURL, options: .atomic)
+    private func command<Payload: Encodable>(type: String, payload: Payload) -> Data? {
+        let command = CoreCommand(type: type, payload: payload)
+        guard let data = try? encoder.encode(command),
+              let json = String(data: data, encoding: .utf8),
+              let response = RackCore.commandSync(json)
+        else { return nil }
+        return response.data(using: .utf8)
     }
 
-    private static func load(from url: URL) throws -> [String: Route] {
-        let data = try Data(contentsOf: url)
-        return try JSONDecoder().decode([String: Route].self, from: data)
+    private struct CoreCommand<Payload: Encodable>: Encodable {
+        var type: String
+        var payload: Payload
+    }
+
+    private struct RouteName: Encodable {
+        var name: String
+    }
+
+    private struct RoutePortUpdate: Encodable {
+        var name: String
+        var tcpPort: Int
+    }
+
+    private struct RouteSocketUpdate: Encodable {
+        var name: String
+        var socketPath: String
+    }
+
+    private struct EmptyPayload: Encodable {}
+
+    private struct RouteReply: Decodable {
+        var payload: Route?
+    }
+
+    private struct RouteListReply: Decodable {
+        var payload: [Route]
     }
 }
