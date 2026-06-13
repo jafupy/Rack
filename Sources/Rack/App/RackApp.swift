@@ -61,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.animates = true
         let controller = NSHostingController(
             rootView: MenuBarContentView { [weak self] in
+                self?.popover.performClose(nil)
                 self?.showSettingsWindow()
             }
                 .environmentObject(store)
@@ -138,6 +139,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let action = ([host] + pathComponents).compactMap { $0 }.joined(separator: ".")
 
         switch action {
+        case "settings", "settings.open", "open-settings":
+            showSettingsWindow()
         case "server.start", "servers.start", "start":
             guard let id = serverID(from: url) else { return }
             store.startServer(id: id)

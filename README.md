@@ -77,6 +77,7 @@ rack://server/stop?id=<server-uuid>
 rack://server/restart?id=<server-uuid>
 rack://server/stop-all
 rack://functions/reload
+rack://settings
 ```
 
 ## Unsigned Install

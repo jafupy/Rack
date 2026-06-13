@@ -1,106 +1,78 @@
-import AppKit
 import SwiftUI
 
-private enum SidebarItem: Hashable {
-  case general
-  case functions
-  case server(UUID)
+enum SettingsSection: String, CaseIterable, Hashable, Identifiable {
+  case general = "General"
+  case servers = "Servers"
+  case functions = "Functions"
+
+  var id: Self { self }
+
+  var systemImage: String {
+    switch self {
+    case .general: return "gearshape"
+    case .servers: return "server.rack"
+    case .functions: return "function"
+    }
+  }
 }
 
 @MainActor
 struct SettingsView: View {
-  @EnvironmentObject private var store: ServerStore
-  @EnvironmentObject private var launchAtLogin: LaunchAtLoginController
-  @State private var selection: SidebarItem? = .general
+  @State private var selection: SettingsSection? = .general
 
   var body: some View {
     NavigationSplitView {
-      sidebar
+      List(SettingsSection.allCases, selection: $selection) { section in
+        Label(section.rawValue, systemImage: section.systemImage)
+          .tag(section)
+      }
+      .listStyle(.sidebar)
+      .navigationTitle("Rack Settings")
     } detail: {
-      detail
-    }
-    .onChange(of: selection) { _, newValue in
-      if case .server(let id) = newValue {
-        store.selectedServerID = id
-      } else if newValue != .functions {
-        store.selectedServerID = nil
+      switch selection ?? .general {
+      case .general:
+        GeneralSettingsPage()
+      case .servers:
+        ServersSettingsPage()
+      case .functions:
+        FunctionsRuntimeSettingsPage()
       }
     }
   }
+}
 
-  @ViewBuilder
-  private var detail: some View {
-    switch selection {
-    case .general:
-      GeneralSettingsView()
-        .environmentObject(store)
-        .environmentObject(launchAtLogin)
-    case .functions:
-      FunctionsSettingsView()
-        .environmentObject(store)
-    case .server:
-      if let selectedServer = store.selectedServer {
-        ServerEditorView(server: selectedServer)
-          .environmentObject(store)
-      } else {
-        detailEmptyState
-      }
-    case nil:
-      detailEmptyState
-    }
-  }
+struct SettingsPage<Content: View>: View {
+  let section: SettingsSection
+  let subtitle: String
+  @ViewBuilder var content: Content
 
-  // MARK: - Sidebar
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 18) {
+        HStack(alignment: .center, spacing: 12) {
+          Image(systemName: section.systemImage)
+            .font(.system(size: 22, weight: .semibold))
+            .frame(width: 44, height: 44)
+            .background(.tertiary.opacity(0.32), in: RoundedRectangle(cornerRadius: 8))
 
-  private var sidebar: some View {
-    List(selection: $selection) {
-      Label("Overview", systemImage: "rectangle.grid.2x2")
-        .tag(SidebarItem.general)
-
-      Label("Functions", systemImage: "function")
-        .tag(SidebarItem.functions)
-
-      Section {
-        if store.servers.isEmpty {
-          Label("No servers", systemImage: "server.rack")
-            .foregroundStyle(.secondary)
-        } else {
-          ForEach(store.servers) { server in
-            ServerListRow(server: server).tag(SidebarItem.server(server.id))
+          VStack(alignment: .leading, spacing: 3) {
+            Text(section.rawValue)
+              .font(.system(size: 28, weight: .semibold))
+            Text(subtitle)
+              .font(.system(size: 13))
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
           }
-          .onDelete(perform: store.deleteServers)
         }
-      } header: {
-        HStack {
-          Text("Servers")
-          Spacer()
-          Button {
-            store.addServer()
-            selection = store.servers.last.map { .server($0.id) }
-          } label: {
-            Image(systemName: "plus")
-          }
-          .buttonStyle(.plain)
-          .foregroundStyle(.secondary)
-          .help("Add Server")
-        }
-        .padding(.trailing, 8)
+
+        content
       }
+      .frame(maxWidth: 860)
+      .frame(maxWidth: .infinity, alignment: .top)
+      .padding(.horizontal, 28)
+      .padding(.vertical, 24)
     }
-    .listStyle(.sidebar)
-    .navigationTitle("Rack. Settings")
-  }
-
-  // MARK: - Detail Empty State
-
-  private var detailEmptyState: some View {
-    ContentUnavailableView {
-      Label("No Server Selected", systemImage: "slider.horizontal.3")
-    } description: {
-      Text("Select a server to configure it, or add a new one.")
-    } actions: {
-      Button("Add Server") { store.addServer() }
-        .buttonStyle(.borderedProminent)
-    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .background(.windowBackground)
   }
 }
