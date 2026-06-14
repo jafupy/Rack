@@ -1,6 +1,18 @@
 import Foundation
 import RackCoreFFI
 
+private func rackCoreEventCallback(json: UnsafePointer<CChar>?, context: UnsafeMutableRawPointer?) {
+    guard let json, let context else { return }
+    let message = String(cString: json)
+    let contextValue = UInt(bitPattern: context)
+
+    Task { @MainActor in
+        guard let context = UnsafeMutableRawPointer(bitPattern: contextValue) else { return }
+        let core = Unmanaged<RackCore>.fromOpaque(context).takeUnretainedValue()
+        core.handleEvent(message)
+    }
+}
+
 @MainActor
 final class RackCore {
     static let shared = RackCore()
@@ -21,14 +33,7 @@ final class RackCore {
         self.eventHandler = eventHandler
 
         let context = Unmanaged.passUnretained(self).toOpaque()
-        let result = rack_core_start("{}", { json, context in
-            guard let json, let context else { return }
-            let core = Unmanaged<RackCore>.fromOpaque(context).takeUnretainedValue()
-            let message = String(cString: json)
-            Task { @MainActor in
-                core.eventHandler?(message)
-            }
-        }, context)
+        let result = rack_core_start("{}", rackCoreEventCallback, context)
 
         isStarted = result == 0
     }
@@ -41,5 +46,9 @@ final class RackCore {
         guard isStarted else { return }
         rack_core_stop()
         isStarted = false
+    }
+
+    fileprivate func handleEvent(_ message: String) {
+        eventHandler?(message)
     }
 }
