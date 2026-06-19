@@ -14,6 +14,7 @@ let package = Package(
     ],
     products: [
         .executable(name: "Rack", targets: ["Rack"]),
+        .executable(name: "RackPortRelay", targets: ["RackPortRelay"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
@@ -46,6 +47,14 @@ let package = Package(
             name: "RackCoreFFI",
             path: "Sources/RackCoreFFI",
             publicHeadersPath: "include"
+        ),
+        .executableTarget(
+            name: "RackPortRelay",
+            dependencies: [
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+            ],
+            path: "Sources/RackPortRelay"
         ),
     ]
 )

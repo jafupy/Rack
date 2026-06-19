@@ -8,6 +8,7 @@ struct GeneralSettingsPage: View {
   @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
   @AppStorage("terminalApp") private var terminalApp = "Ghostty"
   @State private var portForwardingError = false
+  @State private var portForwardingErrorMessage: String?
 
   private let terminals = ["Ghostty", "Terminal", "iTerm2", "Warp"]
 
@@ -62,9 +63,11 @@ struct GeneralSettingsPage: View {
           get: { standardPortsEnabled },
           set: { enabled in
             portForwardingError = false
+            portForwardingErrorMessage = nil
             if enabled {
               standardPortsEnabled = ProxyServer.setupPortForwarding()
               portForwardingError = !standardPortsEnabled
+              portForwardingErrorMessage = ProxyServer.lastPortForwardingError
             } else {
               ProxyServer.teardownPortForwarding()
               standardPortsEnabled = false
@@ -94,9 +97,20 @@ struct GeneralSettingsPage: View {
       }
 
       if portForwardingError {
-        Label("Port forwarding setup failed. Administrator approval may be required.", systemImage: "exclamationmark.triangle.fill")
+        Label(
+          portForwardingErrorMessage
+            ?? "Port forwarding setup failed. Administrator approval may be required.",
+          systemImage: "exclamationmark.triangle.fill"
+        )
           .font(.caption)
           .foregroundStyle(.red)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      if standardPortsEnabled {
+        Label("Standard ports run a privileged local relay for ports 80 and 443.", systemImage: "lock.shield")
+          .font(.caption)
+          .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
     } header: {

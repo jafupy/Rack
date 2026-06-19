@@ -70,12 +70,16 @@ final class ProxyServer: @unchecked Sendable {
   static let defaultPort = 1355
   static let defaultTLSPort = 1443
   static let daemonPath = "/Library/LaunchDaemons/com.jafupy.Rack.portfwd.plist"
+  static let privilegedSupportDirectory = "/Library/Application Support/Rack"
+  static let portRelayPath = "/Library/Application Support/Rack/rack-port-relay"
+  static let pfTokenPath = "/var/run/com.jafupy.Rack.portfwd.pf-token"
   static let hostsBeginMarker = "# Rack.app rack.local begin"
   static let hostsEndMarker = "# Rack.app rack.local end"
 
   // Set after start() binds. Read by Models.localURL and NameInferrer.
   static nonisolated(unsafe) var boundPort: Int = defaultPort
   static nonisolated(unsafe) var boundTLSPort: Int = defaultTLSPort
+  static nonisolated(unsafe) var lastPortForwardingError: String?
 
   private let group = MultiThreadedEventLoopGroup(numberOfThreads: 2)
   private var channels: [any Channel] = []

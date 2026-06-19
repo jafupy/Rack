@@ -45,7 +45,9 @@ app:
 		--target-dir "$(BUILD_DIR)/rust" \
 		--target "$(RUST_TARGET)"; \
 	swift build --configuration release --product Rack --scratch-path "$(BUILD_DIR)"; \
+	swift build --configuration release --product RackPortRelay --scratch-path "$(BUILD_DIR)"; \
 	executable_path=""; \
+	relay_path=""; \
 	if [[ -x "$(BUILD_DIR)/arm64-apple-macosx/release/Rack" ]]; then \
 		executable_path="$(BUILD_DIR)/arm64-apple-macosx/release/Rack"; \
 	elif [[ -x "$(BUILD_DIR)/x86_64-apple-macosx/release/Rack" ]]; then \
@@ -56,10 +58,22 @@ app:
 		echo "Could not find release executable." >&2; \
 		exit 1; \
 	fi; \
+	if [[ -x "$(BUILD_DIR)/arm64-apple-macosx/release/RackPortRelay" ]]; then \
+		relay_path="$(BUILD_DIR)/arm64-apple-macosx/release/RackPortRelay"; \
+	elif [[ -x "$(BUILD_DIR)/x86_64-apple-macosx/release/RackPortRelay" ]]; then \
+		relay_path="$(BUILD_DIR)/x86_64-apple-macosx/release/RackPortRelay"; \
+	elif [[ -x "$(RELEASE_DIR)/RackPortRelay" ]]; then \
+		relay_path="$(RELEASE_DIR)/RackPortRelay"; \
+	else \
+		echo "Could not find release relay executable." >&2; \
+		exit 1; \
+	fi; \
 	rm -rf "$(APP_DIR)"; \
 	mkdir -p "$(MACOS_DIR)" "$(RESOURCES_DIR)"; \
 	cp "$$executable_path" "$(MACOS_DIR)/Rack"; \
 	chmod +x "$(MACOS_DIR)/Rack"; \
+	cp "$$relay_path" "$(RESOURCES_DIR)/rack-port-relay"; \
+	chmod +x "$(RESOURCES_DIR)/rack-port-relay"; \
 	cp "$(RACK_BRIDGE_BIN)" "$(RESOURCES_DIR)/rack-bridge"; \
 	chmod +x "$(RESOURCES_DIR)/rack-bridge"; \
 	cp "$(RACK_CLI_BIN)" "$(RESOURCES_DIR)/rack"; \

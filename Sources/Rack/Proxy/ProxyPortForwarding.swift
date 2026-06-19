@@ -3,30 +3,27 @@ import Foundation
 @preconcurrency import NIOSSL
 
 extension ProxyServer {
-  // MARK: - Standard port forwarding (pfctl, requires administrator)
+  // MARK: - Standard port forwarding (privileged relay, requires administrator)
 
-  /// Installs a LaunchDaemon that redirects standard localhost web ports to Rack's proxy
-  /// and applies the rules immediately. Uses the com.apple/rack anchor so it doesn't wipe
-  /// macOS system pf rules.
+  /// Installs a LaunchDaemon that listens on standard localhost web ports and relays
+  /// raw TCP traffic to Rack's normal proxy ports.
   /// Shows macOS authentication dialog. Returns true on success.
   @discardableResult
   static func setupPortForwarding() -> Bool {
+    lastPortForwardingError = nil
+
+    guard let relayPath = bundledPortRelayPath() else {
+      lastPortForwardingError = "Could not find bundled rack-port-relay executable."
+      return false
+    }
+
     let certPath: String
     do {
       certPath = try ensureLocalTLSCertificate().certificate
     } catch {
+      lastPortForwardingError = "Could not create the local TLS certificate: \(error)"
       return false
     }
-
-    let rules = """
-      rdr pass on lo0 proto tcp from any to any port 80 -> 127.0.0.1 port \(boundPort)
-      rdr pass on lo0 proto tcp from any to any port 443 -> 127.0.0.1 port \(boundTLSPort)
-      """
-    let pfCommand =
-      rules
-      .split(separator: "\n")
-      .map { "'\($0)'" }
-      .joined(separator: " ")
 
     let plist = """
       <?xml version="1.0" encoding="UTF-8"?>
@@ -37,11 +34,15 @@ extension ProxyServer {
           <string>com.jafupy.Rack.portfwd</string>
           <key>ProgramArguments</key>
           <array>
-              <string>/bin/sh</string>
-              <string>-c</string>
-              <string>/sbin/pfctl -E 2&gt;/dev/null || true; printf '%s\\n' \(pfCommand) | /sbin/pfctl -a com.apple/rack -f - 2&gt;/dev/null || true</string>
+              <string>\(portRelayPath)</string>
+              <string>--http-target-port</string>
+              <string>\(boundPort)</string>
+              <string>--https-target-port</string>
+              <string>\(boundTLSPort)</string>
           </array>
           <key>RunAtLoad</key>
+          <true/>
+          <key>KeepAlive</key>
           <true/>
       </dict>
       </plist>
@@ -49,15 +50,42 @@ extension ProxyServer {
 
     let tmpPath = "/tmp/com.jafupy.Rack.portfwd.plist"
     guard (try? plist.write(toFile: tmpPath, atomically: true, encoding: .utf8)) != nil else {
+      lastPortForwardingError = "Could not write temporary launchd plist."
       return false
     }
 
     let escapedCertPath = shellEscape(certPath)
+    let escapedRelayPath = shellEscape(relayPath)
     let scriptPath = "/tmp/com.jafupy.Rack.portfwd.sh"
     let setupScript = """
       set -e
+      launchctl bootout system '\(daemonPath)' 2>/dev/null || true
+      /sbin/pfctl -a com.apple/rack -F all 2>/dev/null || true
+      if [ -s '\(pfTokenPath)' ]; then
+        /sbin/pfctl -X "$(/bin/cat '\(pfTokenPath)')" 2>/dev/null || true
+        rm -f '\(pfTokenPath)'
+      fi
+      mkdir -p '\(privilegedSupportDirectory)'
+      cp \(escapedRelayPath) '\(portRelayPath)'
+      chmod 755 '\(portRelayPath)'
       cp '\(tmpPath)' '\(daemonPath)'
       launchctl bootstrap system '\(daemonPath)' 2>/dev/null || true
+      launchctl kickstart -k system/com.jafupy.Rack.portfwd
+      for port in 80 443; do
+        listening=0
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          if /usr/bin/nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
+            listening=1
+            break
+          fi
+          sleep 0.1
+        done
+        if [ "$listening" != 1 ]; then
+          launchctl print system/com.jafupy.Rack.portfwd >&2 || true
+          echo "Rack standard-port relay did not start listening on port $port." >&2
+          exit 1
+        fi
+      done
       /usr/bin/security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain \(escapedCertPath) 2>/dev/null || true
       tmp_hosts="$(mktemp)"
       /usr/bin/awk '
@@ -75,15 +103,14 @@ extension ProxyServer {
       rm -f "$tmp_hosts"
       /usr/bin/dscacheutil -flushcache 2>/dev/null || true
       /usr/bin/killall -HUP mDNSResponder 2>/dev/null || true
-      /sbin/pfctl -E 2>/dev/null || true
-      printf '%s\\n' \(pfCommand) | /sbin/pfctl -a com.apple/rack -f -
       """
     guard (try? setupScript.write(toFile: scriptPath, atomically: true, encoding: .utf8)) != nil
     else {
+      lastPortForwardingError = "Could not write temporary standard-port setup script."
       return false
     }
 
-    // Install daemon, trust the local cert, add rack.local DNS, and apply pf immediately.
+    // Install daemon, trust the local cert, and add rack.local DNS.
     let script = """
       do shell script "/bin/sh \(shellEscape(scriptPath))" with administrator privileges
       """
@@ -91,17 +118,30 @@ extension ProxyServer {
     NSAppleScript(source: script)?.executeAndReturnError(&error)
 
     let ok = error == nil
+    if let error {
+      lastPortForwardingError =
+        (error[NSAppleScript.errorMessage] as? String)
+        ?? "Standard-port setup failed."
+    }
     UserDefaults.standard.set(ok, forKey: "standardPortsEnabled")
     return ok
   }
 
-  /// Removes the port forwarding LaunchDaemon and immediately flushes the pf anchor.
+  /// Removes the standard-port relay LaunchDaemon. Also clears the old pf-based
+  /// implementation if the user enabled standard ports in an earlier Rack build.
   static func teardownPortForwarding() {
+    lastPortForwardingError = nil
+
     let scriptPath = "/tmp/com.jafupy.Rack.portfwd-teardown.sh"
     let teardownScript = """
       launchctl bootout system '\(daemonPath)' 2>/dev/null || true
       /sbin/pfctl -a com.apple/rack -F all 2>/dev/null || true
+      if [ -s '\(pfTokenPath)' ]; then
+        /sbin/pfctl -X "$(/bin/cat '\(pfTokenPath)')" 2>/dev/null || true
+        rm -f '\(pfTokenPath)'
+      fi
       rm -f '\(daemonPath)'
+      rm -f '\(portRelayPath)'
       tmp_hosts="$(mktemp)"
       /usr/bin/awk '
         $0 == "\(hostsBeginMarker)" { skip = 1; next }
@@ -132,6 +172,34 @@ extension ProxyServer {
     "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
   }
 
+  private static func bundledPortRelayPath() -> String? {
+    if let override = ProcessInfo.processInfo.environment["RACK_PORT_RELAY_PATH"],
+      FileManager.default.isExecutableFile(atPath: override)
+    {
+      return override
+    }
+    if let url = Bundle.main.resourceURL?.appending(path: "rack-port-relay"),
+      FileManager.default.isExecutableFile(atPath: url.path)
+    {
+      return url.path
+    }
+    let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    for path in [
+      ".build/debug/RackPortRelay",
+      ".build/arm64-apple-macosx/debug/RackPortRelay",
+      ".build/x86_64-apple-macosx/debug/RackPortRelay",
+      ".build/release/RackPortRelay",
+      ".build/arm64-apple-macosx/release/RackPortRelay",
+      ".build/x86_64-apple-macosx/release/RackPortRelay",
+    ] {
+      let candidate = cwd.appending(path: path).path
+      if FileManager.default.isExecutableFile(atPath: candidate) {
+        return candidate
+      }
+    }
+    return nil
+  }
+
   static func hasRackLocalHostsEntry() -> Bool {
     guard let hosts = try? String(contentsOfFile: "/etc/hosts", encoding: .utf8) else {
       return false
@@ -148,9 +216,18 @@ extension ProxyServer {
       return false
     }
 
-    return plist.contains("/sbin/pfctl -E")
-      && plist.contains("port 80 -> 127.0.0.1 port")
-      && plist.contains("port 443 -> 127.0.0.1 port")
+    let hasRelay = plist.contains(portRelayPath)
+      && plist.contains("--http-target-port")
+      && plist.contains("--https-target-port")
+    let hasScopedRules = plist.contains("to 127.0.0.1 port 80 -> 127.0.0.1 port")
+      && plist.contains("to 127.0.0.1 port 443 -> 127.0.0.1 port")
+      && plist.contains("to ::1 port 80 -> ::1 port")
+      && plist.contains("to ::1 port 443 -> ::1 port")
+    let hasLegacyRules = plist.contains("from any to any port 80 -> 127.0.0.1 port")
+      && plist.contains("from any to any port 443 -> 127.0.0.1 port")
+
+    let hasPFForwarding = plist.contains("/sbin/pfctl -E") && (hasScopedRules || hasLegacyRules)
+    return hasRelay || hasPFForwarding
   }
 
   enum TLSCertificateError: Error {
