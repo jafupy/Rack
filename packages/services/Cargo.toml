@@ -11,6 +11,8 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 [dependencies]
 nix = { version = "0.29", features = ["process", "signal"] }
 rack-core = { path = "../core" }
+rack-proxy = { path = "../proxy" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true

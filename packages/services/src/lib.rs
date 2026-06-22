@@ -5,11 +5,13 @@ pub mod supervisor;
 use std::{
     collections::HashMap,
     ffi::{CStr, CString},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     os::raw::c_char,
     sync::Mutex,
 };
 
 use rack_core::config::{self, Service as ServiceConfig};
+use rack_proxy::{ProxyServer, ServiceTarget, TargetTable};
 use serde::Serialize;
 
 use registry::{Registry, ServiceState, ServiceView};
@@ -20,10 +22,21 @@ static RUNTIME: Mutex<Option<RackRuntime>> = Mutex::new(None);
 struct RackRuntime {
     supervisor: Supervisor,
     configs: HashMap<String, ServiceConfig>,
+    proxy_runtime: tokio::runtime::Runtime,
+    proxy: Option<ProxyServer>,
+}
+
+impl Drop for RackRuntime {
+    fn drop(&mut self) {
+        if let Some(proxy) = self.proxy.take() {
+            let _ = self.proxy_runtime.block_on(proxy.shutdown());
+        }
+    }
 }
 
 #[derive(Serialize)]
 struct Snapshot {
+    proxy_port: Option<u16>,
     services: Vec<ServiceSnapshot>,
 }
 
@@ -68,10 +81,14 @@ pub extern "C" fn rack_services_init() -> *mut c_char {
         }
 
         let supervisor = Supervisor::start(registry);
+        let proxy_runtime = tokio::runtime::Runtime::new().map_err(|error| error.to_string())?;
+        let proxy = bind_proxy(&proxy_runtime).map_err(|error| error.to_string())?;
         let mut runtime = RUNTIME.lock().map_err(|error| error.to_string())?;
         *runtime = Some(RackRuntime {
             supervisor,
             configs,
+            proxy_runtime,
+            proxy: Some(proxy),
         });
         Ok(String::new())
     })
@@ -84,15 +101,21 @@ pub extern "C" fn rack_services_snapshot_json() -> *mut c_char {
         let runtime = runtime
             .as_ref()
             .ok_or_else(|| "rack services runtime has not been initialized".to_string())?;
-        let services = runtime
+        let views = runtime
             .supervisor
             .list()
-            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())?;
+        refresh_proxy_targets(runtime, &views);
+        let services = views
             .into_iter()
             .map(|view| snapshot_service(view, &runtime.configs))
             .collect::<Vec<_>>();
 
-        serde_json::to_string(&Snapshot { services }).map_err(|error| error.to_string())
+        serde_json::to_string(&Snapshot {
+            proxy_port: runtime.proxy.as_ref().map(|proxy| proxy.addr().port()),
+            services,
+        })
+        .map_err(|error| error.to_string())
     })
 }
 
@@ -162,7 +185,13 @@ fn with_service_id_value(
         let runtime = runtime
             .as_ref()
             .ok_or_else(|| "rack services runtime has not been initialized".to_string())?;
-        action(runtime, &id)
+        let output = action(runtime, &id)?;
+        let views = runtime
+            .supervisor
+            .list()
+            .map_err(|error| error.to_string())?;
+        refresh_proxy_targets(runtime, &views);
+        Ok(output)
     })
 }
 
@@ -190,6 +219,37 @@ fn snapshot_state(state: ServiceState) -> StateSnapshot {
         ServiceState::Starting { pid, pgid } => StateSnapshot::Starting { pid, pgid },
         ServiceState::Running { pid, pgid, ports } => StateSnapshot::Running { pid, pgid, ports },
     }
+}
+
+fn bind_proxy(runtime: &tokio::runtime::Runtime) -> Result<ProxyServer, String> {
+    for port in 1355..=1365 {
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
+        match runtime.block_on(ProxyServer::bind(addr, TargetTable::default())) {
+            Ok(proxy) => return Ok(proxy),
+            Err(error) => eprintln!("failed to bind proxy at {addr}: {error}"),
+        }
+    }
+
+    Err("failed to bind proxy on ports 1355 through 1365".to_string())
+}
+
+fn refresh_proxy_targets(runtime: &RackRuntime, services: &[ServiceView]) {
+    let targets = services.iter().filter_map(service_target);
+    if let Some(proxy) = &runtime.proxy {
+        proxy.targets().update(TargetTable::new(targets));
+    }
+}
+
+fn service_target(service: &ServiceView) -> Option<ServiceTarget> {
+    let ServiceState::Running { ports, .. } = &service.state else {
+        return None;
+    };
+
+    Some(ServiceTarget {
+        service_id: service.id.clone(),
+        host: service.host.clone(),
+        port: *ports.first()?,
+    })
 }
 
 fn ffi_result(action: impl FnOnce() -> Result<String, String>) -> *mut c_char {

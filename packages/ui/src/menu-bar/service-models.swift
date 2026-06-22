@@ -14,13 +14,18 @@ public struct ServiceConfiguration: Identifiable, Equatable {
     command: String,
     arguments: String = "",
     host: String,
+    proxyPort: UInt16? = nil,
     status: ServiceStatus
   ) {
     self.id = id
     self.name = name
     self.command = command
     self.arguments = arguments
-    self.localURL = "http://\(host).localhost"
+    if let proxyPort {
+      self.localURL = "http://\(host).localhost:\(proxyPort)"
+    } else {
+      self.localURL = "http://\(host).localhost"
+    }
     self.status = status
   }
 }

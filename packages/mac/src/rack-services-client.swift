@@ -10,7 +10,7 @@ final class RackServicesClient: RackRuntimeClient {
   func services() throws -> [ServiceConfiguration] {
     let json = try RackServices.value(rackServicesSnapshotJSON())
     let snapshot = try JSONDecoder().decode(RegistrySnapshot.self, from: Data(json.utf8))
-    return snapshot.services.map(ServiceConfiguration.init)
+    return snapshot.services.map { ServiceConfiguration($0, proxyPort: snapshot.proxyPort) }
   }
 
   func startService(id: String) throws {
@@ -35,12 +35,13 @@ final class RackServicesClient: RackRuntimeClient {
 }
 
 extension ServiceConfiguration {
-  fileprivate init(_ service: ServiceSnapshot) {
+  fileprivate init(_ service: ServiceSnapshot, proxyPort: UInt16?) {
     self.init(
       id: service.id,
       name: service.name,
       command: service.run,
       host: service.host,
+      proxyPort: proxyPort,
       status: ServiceStatus(service.state)
     )
   }
@@ -91,7 +92,13 @@ private enum RackServicesError: Error, CustomStringConvertible {
 }
 
 private struct RegistrySnapshot: Decodable {
+  let proxyPort: UInt16?
   let services: [ServiceSnapshot]
+
+  enum CodingKeys: String, CodingKey {
+    case proxyPort = "proxy_port"
+    case services
+  }
 }
 
 private struct ServiceSnapshot: Decodable {
