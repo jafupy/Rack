@@ -6,4 +6,5 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+tokio.workspace = true
 thiserror.workspace = true
