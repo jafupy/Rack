@@ -51,6 +51,9 @@ pub enum ValidationError {
     #[error("service at index {index} has an empty host")]
     EmptyHost { index: usize },
 
+    #[error("service at index {index} has invalid host `{host}`")]
+    InvalidHost { index: usize, host: String },
+
     #[error("host `{host}` is used by multiple services")]
     DuplicateHost { host: String },
 
@@ -90,6 +93,13 @@ pub fn validate_config(config: &Config) -> Result<(), ValidationErrors> {
             ValidationError::EmptyHost { index },
         );
 
+        if !service.host.trim().is_empty() && !is_valid_host(&service.host) {
+            errors.push(ValidationError::InvalidHost {
+                index,
+                host: service.host.clone(),
+            });
+        }
+
         if !service.host.trim().is_empty() && !hosts.insert(service.host.as_str()) {
             errors.push(ValidationError::DuplicateHost {
                 host: service.host.clone(),
@@ -119,6 +129,17 @@ fn push_if_empty(errors: &mut Vec<ValidationError>, value: &str, error: Validati
     if value.trim().is_empty() {
         errors.push(error);
     }
+}
+
+fn is_valid_host(host: &str) -> bool {
+    let bytes = host.as_bytes();
+    if bytes.is_empty() || bytes[0] == b'-' || bytes[bytes.len() - 1] == b'-' {
+        return false;
+    }
+
+    bytes
+        .iter()
+        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-')
 }
 
 #[cfg(test)]
@@ -190,6 +211,30 @@ mod tests {
                 index: 0
             }]))
         );
+    }
+
+    #[test]
+    fn rejects_invalid_hosts() {
+        for host in ["API", "api.localhost", "api_dev", "-api", "api-"] {
+            let mut config = valid_config();
+            config.services[0].host = host.to_string();
+
+            assert_eq!(
+                validate_config(&config),
+                Err(ValidationErrors::new(vec![ValidationError::InvalidHost {
+                    index: 0,
+                    host: host.to_string()
+                }]))
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_hyphenated_hosts() {
+        let mut config = valid_config();
+        config.services[0].host = "jafu-api2".to_string();
+
+        assert_eq!(validate_config(&config), Ok(()));
     }
 
     #[test]
