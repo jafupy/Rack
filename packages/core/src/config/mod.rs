@@ -2,6 +2,7 @@ mod backfill;
 mod parse;
 mod preamble;
 mod validate;
+mod write;
 
 pub use backfill::{
     backfill_at, backfill_str, cache_config, cache_config_at, cache_path, config_path, load,
@@ -10,6 +11,7 @@ pub use backfill::{
 pub use parse::{parse_full_config, ParseError};
 use serde::{Deserialize, Serialize};
 pub use validate::{validate_config, ValidationError, ValidationErrors};
+pub use write::{save, save_at, WriteError};
 
 pub const SUPPORTED_SCHEMA_VERSION: u8 = 1;
 
