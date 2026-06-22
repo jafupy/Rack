@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
   # "packages/blob",
-  # "packages/cli",
+  "packages/cli",
   "packages/core",
   # "packages/hooks",
   "packages/proxy",
