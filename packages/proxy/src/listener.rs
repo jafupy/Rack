@@ -248,6 +248,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxies_websocket_upgrade_streams() {
+        let backend = WebSocketBackend::start().await;
+        let proxy = test_proxy("api", backend.port()).await;
+        let mut stream = TcpStream::connect(proxy.addr()).await.unwrap();
+        let request = concat!(
+            "GET /socket HTTP/1.1\r\n",
+            "Host: api.localhost\r\n",
+            "Connection: Upgrade\r\n",
+            "Upgrade: websocket\r\n",
+            "\r\n"
+        );
+
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let response = read_until(&mut stream, b"\r\n\r\n").await;
+        stream.write_all(b"ping").await.unwrap();
+
+        let mut echo = [0; 4];
+        stream.read_exact(&mut echo).await.unwrap();
+
+        assert!(
+            response.starts_with("HTTP/1.1 101 Switching Protocols"),
+            "{response}"
+        );
+        assert_eq!(&echo, b"ping");
+        proxy.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn rejects_requests_without_host_header() {
         let backend = TestBackend::start().await;
         let proxy = test_proxy("api", backend.port()).await;
@@ -357,6 +385,55 @@ mod tests {
         let (head, body) = request.split_once("\r\n\r\n").unwrap();
         let request_line = head.lines().next().unwrap();
         format!("{}\n{}", request_line, body)
+    }
+
+    struct WebSocketBackend {
+        port: u16,
+    }
+
+    impl WebSocketBackend {
+        async fn start() -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            tokio::spawn(async move {
+                while let Ok((mut stream, _)) = listener.accept().await {
+                    tokio::spawn(async move {
+                        let _ = read_until(&mut stream, b"\r\n\r\n").await;
+                        let response = concat!(
+                            "HTTP/1.1 101 Switching Protocols\r\n",
+                            "connection: upgrade\r\n",
+                            "upgrade: websocket\r\n",
+                            "\r\n"
+                        );
+                        if stream.write_all(response.as_bytes()).await.is_ok() {
+                            let mut payload = [0; 4];
+                            if stream.read_exact(&mut payload).await.is_ok() {
+                                let _ = stream.write_all(&payload).await;
+                            }
+                        }
+                    });
+                }
+            });
+            Self { port }
+        }
+
+        fn port(&self) -> u16 {
+            self.port
+        }
+    }
+
+    async fn read_until(stream: &mut TcpStream, needle: &[u8]) -> String {
+        let mut data = Vec::new();
+        let mut buffer = [0; 1];
+
+        while stream.read_exact(&mut buffer).await.is_ok() {
+            data.push(buffer[0]);
+            if data.ends_with(needle) {
+                break;
+            }
+        }
+
+        String::from_utf8(data).unwrap()
     }
 
     fn header_end(request: &[u8]) -> Option<usize> {
