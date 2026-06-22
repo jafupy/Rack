@@ -37,7 +37,7 @@ impl fmt::Display for ValidationErrors {
 
 impl std::error::Error for ValidationErrors {}
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum ValidationError {
     #[error("service at index {index} has an empty id")]
     EmptyServiceId { index: usize },
@@ -53,9 +53,6 @@ pub enum ValidationError {
 
     #[error("host `{host}` is used by multiple services")]
     DuplicateHost { host: String },
-
-    #[error("service at index {index} has invalid port 0")]
-    InvalidPort { index: usize },
 
     #[error("service at index {index} has an empty run command")]
     EmptyRun { index: usize },
@@ -97,10 +94,6 @@ pub fn validate_config(config: &Config) -> Result<(), ValidationErrors> {
             errors.push(ValidationError::DuplicateHost {
                 host: service.host.clone(),
             });
-        }
-
-        if service.port == 0 {
-            errors.push(ValidationError::InvalidPort { index });
         }
 
         push_if_empty(
@@ -158,7 +151,6 @@ mod tests {
             id: "service-1".to_string(),
             name: "Worker".to_string(),
             host: "worker".to_string(),
-            port: 3001,
             run: "cargo run --bin worker".to_string(),
             working_dir: "~".to_string(),
             auto_start: false,
@@ -207,7 +199,6 @@ mod tests {
             id: "service-2".to_string(),
             name: "Worker".to_string(),
             host: "api".to_string(),
-            port: 3001,
             run: "cargo run --bin worker".to_string(),
             working_dir: "~".to_string(),
             auto_start: false,
@@ -220,19 +211,6 @@ mod tests {
                     host: "api".to_string()
                 }
             ]))
-        );
-    }
-
-    #[test]
-    fn rejects_zero_port() {
-        let mut config = valid_config();
-        config.services[0].port = 0;
-
-        assert_eq!(
-            validate_config(&config),
-            Err(ValidationErrors::new(vec![ValidationError::InvalidPort {
-                index: 0
-            }]))
         );
     }
 
@@ -268,7 +246,6 @@ mod tests {
         config.services[0].id = "".to_string();
         config.services[0].name = "".to_string();
         config.services[0].host = "".to_string();
-        config.services[0].port = 0;
         config.services[0].run = "".to_string();
         config.services[0].working_dir = "".to_string();
 
@@ -278,7 +255,6 @@ mod tests {
                 ValidationError::EmptyServiceId { index: 0 },
                 ValidationError::EmptyServiceName { index: 0 },
                 ValidationError::EmptyHost { index: 0 },
-                ValidationError::InvalidPort { index: 0 },
                 ValidationError::EmptyRun { index: 0 },
                 ValidationError::EmptyWorkingDir { index: 0 },
             ]))
@@ -294,7 +270,6 @@ mod tests {
                 id: "service-1".to_string(),
                 name: "API".to_string(),
                 host: "api".to_string(),
-                port: 3000,
                 run: "cargo run".to_string(),
                 working_dir: "~".to_string(),
                 auto_start: true,

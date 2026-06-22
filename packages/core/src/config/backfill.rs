@@ -1,12 +1,9 @@
 use std::{env, fs, io, path::PathBuf};
 
-use serde::Serialize;
 use thiserror::Error;
 
 use super::{
-    parse::{
-        parse_full_config, parse_partial_config, parse_schema_version, ParseError, PartialService,
-    },
+    parse::{parse_full_config, parse_partial_config, parse_schema_version, ParseError},
     preamble, Config, Service,
 };
 
@@ -41,13 +38,6 @@ pub enum BackfillError {
 
     #[error("failed to serialize backfilled TOML config: {0}")]
     SerializeToml(#[from] toml::ser::Error),
-}
-
-#[derive(Debug, Serialize)]
-struct ConfigToml<'a> {
-    use_standard_ports: bool,
-    terminal: &'a str,
-    services: &'a [Service],
 }
 
 /// Loads the user config, backfills missing top-level fields from
@@ -176,17 +166,11 @@ pub fn backfill_str(input: &str) -> Result<Config, BackfillError> {
         return Ok(default);
     }
 
-    let partial = parse_partial_config(input)?;
-    let schema_version = schema_version_or_default(input, default.schema_version)?;
+    let mut config = parse_partial_config(input)?;
+    config.schema_version = schema_version_or_default(input, default.schema_version)?;
+    config.services = merge_services(config.services)?;
 
-    Ok(Config {
-        schema_version,
-        use_standard_ports: partial
-            .use_standard_ports
-            .unwrap_or(default.use_standard_ports),
-        terminal: partial.terminal.unwrap_or(default.terminal),
-        services: merge_services(partial.services, default.services)?,
-    })
+    Ok(config)
 }
 
 pub fn format_config(config: &Config) -> Result<String, BackfillError> {
@@ -213,11 +197,7 @@ pub fn format_cached_config(
 }
 
 fn config_toml(config: &Config) -> Result<String, BackfillError> {
-    Ok(toml::to_string_pretty(&ConfigToml {
-        use_standard_ports: config.use_standard_ports,
-        terminal: &config.terminal,
-        services: &config.services,
-    })?)
+    Ok(toml::to_string_pretty(config)?)
 }
 
 fn schema_version_or_default(input: &str, default: u8) -> Result<u8, ParseError> {
@@ -228,41 +208,55 @@ fn schema_version_or_default(input: &str, default: u8) -> Result<u8, ParseError>
     }
 }
 
-fn merge_services(
-    partial_services: Option<Vec<PartialService>>,
-    default_services: Vec<Service>,
-) -> Result<Vec<Service>, BackfillError> {
-    let Some(partial_services) = partial_services else {
-        return Ok(default_services);
-    };
-
-    partial_services
+fn merge_services(services: Vec<Service>) -> Result<Vec<Service>, BackfillError> {
+    services
         .into_iter()
         .enumerate()
-        .map(|(index, partial)| merge_service(index, partial))
+        .map(|(index, service)| merge_service(index, service))
         .collect()
 }
 
-fn merge_service(index: usize, partial: PartialService) -> Result<Service, BackfillError> {
-    let name = required_service_field(index, "name", partial.name)?;
+fn merge_service(index: usize, service: Service) -> Result<Service, BackfillError> {
+    let name = required_service_field(index, "name", service.name)?;
 
     Ok(Service {
-        id: required_service_field(index, "id", partial.id)?,
-        host: partial.host.unwrap_or_else(|| name.to_lowercase()),
+        id: required_service_field(index, "id", service.id)?,
+        host: if service.host.is_empty() {
+            name.to_lowercase()
+        } else {
+            service.host
+        },
         name,
-        port: required_service_field(index, "port", partial.port)?,
-        run: required_service_field(index, "run", partial.run)?,
-        working_dir: partial.working_dir.unwrap_or_else(|| "~".to_string()),
-        auto_start: partial.auto_start.unwrap_or(false),
+        run: required_service_field(index, "run", service.run)?,
+        working_dir: service.working_dir,
+        auto_start: service.auto_start,
     })
 }
 
 fn required_service_field<T>(
     index: usize,
     field: &'static str,
-    value: Option<T>,
+    value: impl IntoRequired<T>,
 ) -> Result<T, BackfillError> {
-    value.ok_or(BackfillError::MissingServiceField { index, field })
+    value
+        .into_required()
+        .ok_or(BackfillError::MissingServiceField { index, field })
+}
+
+trait IntoRequired<T> {
+    fn into_required(self) -> Option<T>;
+}
+
+impl<T> IntoRequired<T> for Option<T> {
+    fn into_required(self) -> Option<T> {
+        self
+    }
+}
+
+impl IntoRequired<String> for String {
+    fn into_required(self) -> Option<String> {
+        (!self.is_empty()).then_some(self)
+    }
 }
 
 #[cfg(test)]
@@ -296,7 +290,6 @@ terminal = "Ghostty"
 [[services]]
 id = "service-1"
 name = "API"
-port = 3000
 run = "cargo run"
 "#,
         )
@@ -306,7 +299,6 @@ run = "cargo run"
         assert_eq!(service.id, "service-1");
         assert_eq!(service.name, "API");
         assert_eq!(service.host, "api");
-        assert_eq!(service.port, 3000);
         assert_eq!(service.run, "cargo run");
         assert_eq!(service.working_dir, "~");
         assert!(!service.auto_start);
@@ -322,7 +314,6 @@ terminal = "Ghostty"
 
 [[services]]
 name = "API"
-port = 3000
 run = "cargo run"
 "#,
         )

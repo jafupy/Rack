@@ -1,9 +1,8 @@
-use serde::Deserialize;
 use thiserror::Error;
 
 use super::{
     preamble::{self, PreambleError},
-    Config, Service,
+    Config,
 };
 
 #[derive(Debug, Error)]
@@ -21,54 +20,15 @@ pub enum ParseError {
     Toml(#[from] toml::de::Error),
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawConfig {
-    use_standard_ports: bool,
-    terminal: String,
-
-    services: Vec<Service>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct PartialConfig {
-    pub(crate) use_standard_ports: Option<bool>,
-    pub(crate) terminal: Option<String>,
-
-    pub(crate) services: Option<Vec<PartialService>>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct PartialService {
-    pub(crate) id: Option<String>,
-
-    pub(crate) name: Option<String>,
-
-    pub(crate) host: Option<String>,
-    pub(crate) port: Option<u16>,
-
-    pub(crate) run: Option<String>,
-    pub(crate) working_dir: Option<String>,
-
-    pub(crate) auto_start: Option<bool>,
-}
-
 pub fn parse_full_config(input: &str) -> Result<Config, ParseError> {
     let schema_version = parse_schema_version(input)?;
-    let raw: RawConfig = toml::from_str(input)?;
+    let mut config = parse_partial_config(input)?;
+    config.schema_version = schema_version;
 
-    Ok(Config {
-        schema_version,
-        use_standard_ports: raw.use_standard_ports,
-        terminal: raw.terminal,
-
-        services: raw.services,
-    })
+    Ok(config)
 }
 
-pub(crate) fn parse_partial_config(input: &str) -> Result<PartialConfig, ParseError> {
+pub(crate) fn parse_partial_config(input: &str) -> Result<Config, ParseError> {
     Ok(toml::from_str(input)?)
 }
 
@@ -105,7 +65,6 @@ mod tests {
         assert_eq!(service.id, "A123C23D-DBCB-4689-8A7F-D888B8A47BAE");
         assert_eq!(service.name, "DEFAULT");
         assert_eq!(service.host, "default");
-        assert_eq!(service.port, 80);
         assert_eq!(service.run, "echo hi");
         assert_eq!(service.working_dir, "~");
         assert!(service.auto_start);
@@ -161,7 +120,6 @@ terminal = "Ghostty"
 id = "A123C23D-DBCB-4689-8A7F-D888B8A47BAE"
 name = "DEFAULT"
 host = "default"
-port = 80
 run = "echo hi"
 working_dir = "~"
 auto_statr = true
