@@ -72,6 +72,7 @@ pub extern "C" fn rack_services_init() -> *mut c_char {
         let config = config::load().map_err(|error| error.to_string())?;
         let mut registry = Registry::new();
         let mut configs = HashMap::new();
+        let auto_start = auto_start_ids(&config.services);
 
         for service in config.services {
             registry
@@ -81,6 +82,11 @@ pub extern "C" fn rack_services_init() -> *mut c_char {
         }
 
         let supervisor = Supervisor::start(registry);
+        for id in auto_start {
+            supervisor
+                .start_service(id)
+                .map_err(|error| error.to_string())?;
+        }
         let proxy_runtime = tokio::runtime::Runtime::new().map_err(|error| error.to_string())?;
         let proxy = bind_proxy(&proxy_runtime).map_err(|error| error.to_string())?;
         let mut runtime = RUNTIME.lock().map_err(|error| error.to_string())?;
@@ -195,6 +201,14 @@ fn with_service_id_value(
     })
 }
 
+fn auto_start_ids(services: &[ServiceConfig]) -> Vec<String> {
+    services
+        .iter()
+        .filter(|service| service.auto_start)
+        .map(|service| service.id.clone())
+        .collect()
+}
+
 fn snapshot_service(
     view: ServiceView,
     configs: &HashMap<String, ServiceConfig>,
@@ -272,4 +286,31 @@ unsafe fn c_string(value: *const c_char) -> Result<String, String> {
         .to_str()
         .map(str::to_string)
         .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collects_auto_start_service_ids_in_config_order() {
+        let services = vec![
+            service("web", false),
+            service("api", true),
+            service("worker", true),
+        ];
+
+        assert_eq!(auto_start_ids(&services), vec!["api", "worker"]);
+    }
+
+    fn service(id: &str, auto_start: bool) -> ServiceConfig {
+        ServiceConfig {
+            id: id.to_string(),
+            name: id.to_string(),
+            host: id.to_string(),
+            run: "sleep 1".to_string(),
+            working_dir: "~".to_string(),
+            auto_start,
+        }
+    }
 }
