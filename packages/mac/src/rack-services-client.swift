@@ -21,6 +21,10 @@ final class RackServicesClient: RackRuntimeClient {
     try id.withCString { try RackServices.check(rackServicesStopService($0)) }
   }
 
+  func restartService(id: String) throws {
+    try id.withCString { try RackServices.check(rackServicesRestartService($0)) }
+  }
+
   func shutdown() {
     _ = RackServices.string(rackServicesShutdown())
   }
@@ -139,6 +143,9 @@ private func rackServicesStartService(_ id: UnsafePointer<CChar>) -> UnsafeMutab
 
 @_silgen_name("rack_services_stop_service")
 private func rackServicesStopService(_ id: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("rack_services_restart_service")
+private func rackServicesRestartService(_ id: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("rack_services_log")
 private func rackServicesLog(_ id: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?

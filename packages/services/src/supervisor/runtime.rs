@@ -62,6 +62,10 @@ fn handle(
         Message::Stop { id, reply } => {
             let _ = reply.send(stop_service(registry, processes, &id));
         }
+        Message::Restart { id, reply } => {
+            logs.insert(id.clone(), String::new());
+            let _ = reply.send(restart_service(registry, processes, &id));
+        }
         Message::Shutdown => {}
     }
 }
@@ -89,6 +93,18 @@ fn start_service(
 
     processes.insert(id.to_string(), process);
     Ok(())
+}
+
+fn restart_service(
+    registry: &mut Registry,
+    processes: &mut HashMap<String, Process>,
+    id: &str,
+) -> Result<(), SupervisorError> {
+    if !matches!(registry.status(id)?, crate::registry::ServiceState::Stopped) {
+        stop_service(registry, processes, id)?;
+    }
+
+    start_service(registry, processes, id)
 }
 
 fn stop_service(

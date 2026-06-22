@@ -273,6 +273,19 @@ private struct ServiceMenuRow: View {
         .disabled(!hasLog)
         .help("Open in \(UserDefaults.standard.string(forKey: "terminalApp") ?? "Ghostty")")
 
+        Button {
+          model.restart(id: service.id)
+        } label: {
+          Image(systemName: "arrow.clockwise")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(isRunning ? Color.secondary : Color.secondary.opacity(0.4))
+            .frame(width: 26, height: 26)
+            .background(.quaternary.opacity(isRunning ? 1 : 0.4), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isRunning)
+        .help("Restart service")
+
         // Play / stop button
         Button {
           if isRunning || isStarting {

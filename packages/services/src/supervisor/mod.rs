@@ -66,6 +66,13 @@ impl Supervisor {
         })
     }
 
+    pub fn restart_service(&self, id: impl Into<String>) -> Result<(), SupervisorError> {
+        self.request(|reply| Message::Restart {
+            id: id.into(),
+            reply,
+        })
+    }
+
     pub fn shutdown(mut self) -> thread::Result<()> {
         self.stop_thread()
     }

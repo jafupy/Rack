@@ -146,6 +146,16 @@ pub extern "C" fn rack_services_stop_service(id: *const c_char) -> *mut c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn rack_services_restart_service(id: *const c_char) -> *mut c_char {
+    with_service_id(id, |runtime, id| {
+        runtime
+            .supervisor
+            .restart_service(id)
+            .map_err(|error| error.to_string())
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn rack_services_log(id: *const c_char) -> *mut c_char {
     with_service_id_value(id, |runtime, id| {
         runtime

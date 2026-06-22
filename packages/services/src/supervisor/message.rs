@@ -32,5 +32,9 @@ pub(super) enum Message {
         id: String,
         reply: Reply<()>,
     },
+    Restart {
+        id: String,
+        reply: Reply<()>,
+    },
     Shutdown,
 }
