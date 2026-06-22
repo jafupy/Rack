@@ -2,9 +2,9 @@ import SwiftUI
 
 @MainActor
 public struct MenuBarContentView: View {
-  @EnvironmentObject private var store: ServerStore
+  @EnvironmentObject private var model: RackViewModel
   @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
-  @State private var functionsExpanded = false
+  @State private var hooksExpanded = false
   var openSettings: (() -> Void)?
 
   public init(openSettings: (() -> Void)? = nil) {
@@ -12,15 +12,15 @@ public struct MenuBarContentView: View {
   }
 
   private var runningCount: Int {
-    store.servers.filter { store.status(for: $0.id).isRunning }.count
+    model.services.filter { model.status(for: $0.id).isRunning }.count
   }
 
   public var body: some View {
     VStack(spacing: 0) {
-      serverList
-      if !store.functions.isEmpty {
+      serviceList
+      if !model.hooks.isEmpty {
         Divider()
-        functionList
+        hookList
       }
       Divider()
       footer
@@ -29,17 +29,17 @@ public struct MenuBarContentView: View {
     .fixedSize(horizontal: false, vertical: true)
   }
 
-  private var functionList: some View {
+  private var hookList: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
         Button {
-          functionsExpanded.toggle()
+          hooksExpanded.toggle()
         } label: {
           HStack(spacing: 6) {
-            Image(systemName: functionsExpanded ? "chevron.down" : "chevron.right")
+            Image(systemName: hooksExpanded ? "chevron.down" : "chevron.right")
               .font(.system(size: 9, weight: .semibold))
               .frame(width: 10)
-            Label("Functions", systemImage: "function")
+            Label("Hooks", systemImage: "point.3.connected.trianglepath.dotted")
           }
           .font(.system(size: 11, weight: .semibold))
           .foregroundStyle(.secondary)
@@ -49,7 +49,7 @@ public struct MenuBarContentView: View {
         Spacer()
 
         Button {
-          store.reloadFunctions()
+          model.reloadHooks()
         } label: {
           Image(systemName: "arrow.clockwise")
         }
@@ -57,9 +57,9 @@ public struct MenuBarContentView: View {
         .foregroundStyle(.secondary)
       }
 
-      if functionsExpanded {
-        ForEach(store.functions.prefix(4)) { function in
-          FunctionMenuRow(function: function)
+      if hooksExpanded {
+        ForEach(model.hooks.prefix(4)) { hook in
+          HookMenuRow(hook: hook)
         }
       }
     }
@@ -68,19 +68,19 @@ public struct MenuBarContentView: View {
   }
 
   @ViewBuilder
-  private var serverList: some View {
-    if store.servers.isEmpty {
+  private var serviceList: some View {
+    if model.services.isEmpty {
       VStack(spacing: 10) {
         Image(systemName: "server.rack")
           .font(.system(size: 28))
           .foregroundStyle(.quaternary)
-        Text("No Servers")
+        Text("No Services")
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(.secondary)
         Button {
           showSettings()
         } label: {
-          Text("Add a Server")
+          Text("Add a Service")
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
@@ -88,22 +88,22 @@ public struct MenuBarContentView: View {
       .frame(maxWidth: .infinity)
       .padding(.vertical, 30)
     } else {
-      if store.servers.count > 4 {
+      if model.services.count > 4 {
         ScrollView {
-          serverRows
+          serviceRows
         }
         .frame(maxHeight: 360)
       } else {
-        serverRows
+        serviceRows
       }
     }
   }
 
-  private var serverRows: some View {
+  private var serviceRows: some View {
     LazyVStack(spacing: 0) {
-      ForEach(Array(store.servers.enumerated()), id: \.element.id) { index, server in
-        ServerMenuRow(server: server)
-        if index < store.servers.count - 1 {
+      ForEach(Array(model.services.enumerated()), id: \.element.id) { index, service in
+        ServiceMenuRow(service: service)
+        if index < model.services.count - 1 {
           Divider().padding(.leading, 36)
         }
       }
@@ -128,7 +128,7 @@ public struct MenuBarContentView: View {
             .font(.system(size: 11))
             .foregroundStyle(.green)
         }
-      } else if !store.servers.isEmpty {
+      } else if !model.services.isEmpty {
         Text("All stopped")
           .font(.system(size: 11))
           .foregroundStyle(.tertiary)
@@ -137,14 +137,14 @@ public struct MenuBarContentView: View {
       Spacer()
 
       if runningCount > 0 {
-        Button("Stop All") { store.stopAllServers() }
+        Button("Stop All") { model.stopAll() }
           .buttonStyle(.plain)
           .font(.system(size: 11))
           .foregroundStyle(.secondary)
       }
 
       Button("Quit") {
-        store.stopAllServers()
+        model.stopAll()
         NSApplication.shared.terminate(nil)
       }
       .buttonStyle(.plain)
@@ -163,33 +163,33 @@ public struct MenuBarContentView: View {
 }
 
 @MainActor
-private struct FunctionMenuRow: View {
+private struct HookMenuRow: View {
   @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
 
-  let function: ServerStore.FunctionSummary
+  let hook: HookSummary
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       HStack {
-        Text(function.name)
+        Text(hook.name)
           .font(.system(size: 12, weight: .medium))
           .lineLimit(1)
         Spacer()
-        if !function.errors.isEmpty {
+        if !hook.errors.isEmpty {
           Image(systemName: "exclamationmark.triangle.fill")
             .foregroundStyle(.orange)
         }
       }
 
-      ForEach(function.routes.prefix(2)) { route in
-        Text("\(route.method) \(functionRouteURL(route.path))")
+      ForEach(hook.routes.prefix(2)) { route in
+        Text("\(route.method) \(hookRouteURL(route.path))")
           .font(.system(size: 10, design: .monospaced))
           .foregroundStyle(.secondary)
           .lineLimit(1)
       }
 
-      ForEach(function.crons.prefix(2)) { cron in
-        Text("\(cron.schedule) -> \(cron.function)")
+      ForEach(hook.crons.prefix(2)) { cron in
+        Text("\(cron.schedule) -> \(cron.hook)")
           .font(.system(size: 10, design: .monospaced))
           .foregroundStyle(.tertiary)
           .lineLimit(1)
@@ -197,33 +197,33 @@ private struct FunctionMenuRow: View {
     }
   }
 
-  private func functionRouteURL(_ path: String) -> String {
+  private func hookRouteURL(_ path: String) -> String {
     if standardPortsEnabled {
       return "rack.local\(path)"
     }
-    return "localhost:\(ProxyServer.boundPort)\(path)"
+    return "localhost:\(RackProxy.fallbackPort)\(path)"
   }
 }
 
-// MARK: - Server Row
+// MARK: - Service Row
 
 @MainActor
-private struct ServerMenuRow: View {
-  @EnvironmentObject private var store: ServerStore
-  let server: ServerConfiguration
+private struct ServiceMenuRow: View {
+  @EnvironmentObject private var model: RackViewModel
+  let service: ServiceConfiguration
 
-  private var status: ServerStatus { store.status(for: server.id) }
+  private var status: ServiceStatus { model.status(for: service.id) }
   private var isRunning: Bool { status.isRunning }
   private var isStarting: Bool { status == .starting }
-  private var hasLog: Bool { store.logFilePath(for: server.id) != nil }
+  private var hasLog: Bool { model.logFilePath(for: service.id) != nil }
 
   private var commandLabel: String {
-    [server.command, server.arguments].filter { !$0.isEmpty }.joined(separator: " ")
+    [service.command, service.arguments].filter { !$0.isEmpty }.joined(separator: " ")
   }
 
   /// Last 3 non-empty visible lines, as an ANSI-attributed string.
   private var lastLinesAttributed: AttributedString? {
-    let log = store.log(for: server.id)
+    let log = model.log(for: service.id)
     guard !log.isEmpty else { return nil }
     let lines = log.components(separatedBy: "\n").filter {
       !ANSIParser.strip($0).trimmingCharacters(in: .whitespaces).isEmpty
@@ -241,11 +241,11 @@ private struct ServerMenuRow: View {
           .frame(width: 8, height: 8)
 
         VStack(alignment: .leading, spacing: 2) {
-          Text(server.name.isEmpty ? "Unnamed" : server.name)
+          Text(service.name.isEmpty ? "Unnamed" : service.name)
             .font(.system(size: 13, weight: .medium))
             .lineLimit(1)
-          if isRunning, let url = URL(string: server.localURL) {
-            Link(server.localURL, destination: url)
+          if isRunning, let url = URL(string: service.localURL) {
+            Link(service.localURL, destination: url)
               .font(.system(size: 10, design: .monospaced))
               .foregroundStyle(.opacity(0.8))
               .lineLimit(1)
@@ -261,7 +261,7 @@ private struct ServerMenuRow: View {
 
         // Terminal button
         Button {
-          store.openInTerminal(id: server.id)
+          model.openInTerminal(id: service.id)
         } label: {
           Image(systemName: "terminal")
             .font(.system(size: 10))
@@ -276,9 +276,9 @@ private struct ServerMenuRow: View {
         // Play / stop button
         Button {
           if isRunning || isStarting {
-            store.stopServer(id: server.id)
+            model.stop(id: service.id)
           } else {
-            store.startServer(id: server.id)
+            model.start(id: service.id)
           }
         } label: {
           if isStarting {
@@ -299,7 +299,7 @@ private struct ServerMenuRow: View {
           }
         }
         .buttonStyle(.plain)
-        .disabled(server.command.isEmpty && !isRunning && !isStarting)
+        .disabled(service.command.isEmpty && !isRunning && !isStarting)
       }
       .padding(.horizontal, 14)
       .padding(.top, 10)
@@ -308,7 +308,7 @@ private struct ServerMenuRow: View {
       // ANSI log preview — tap to open in terminal
       if let attributed = lastLinesAttributed {
         Button {
-          store.openInTerminal(id: server.id)
+          model.openInTerminal(id: service.id)
         } label: {
           Text(attributed)
             .lineLimit(3)
@@ -325,7 +325,7 @@ private struct ServerMenuRow: View {
   }
 
   private var statusColor: Color {
-    switch store.status(for: server.id) {
+    switch model.status(for: service.id) {
     case .stopped: return .secondary
     case .starting: return .orange
     case .running: return .green

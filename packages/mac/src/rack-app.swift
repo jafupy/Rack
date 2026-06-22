@@ -3,12 +3,12 @@ import SwiftUI
 
 @main
 struct RackApp: App {
-  @StateObject private var store = ServerStore()
+  @StateObject private var model = RackViewModel(runtime: RackServicesClient())
 
   var body: some Scene {
     MenuBarExtra("Rack", systemImage: "server.rack") {
       MenuBarContentView()
-        .environmentObject(store)
+        .environmentObject(model)
     }
     .menuBarExtraStyle(.window)
   }
