@@ -20,6 +20,15 @@ pub struct Supervisor {
     thread: Option<JoinHandle<()>>,
 }
 
+impl Clone for Supervisor {
+    fn clone(&self) -> Self {
+        Self {
+            commands: self.commands.clone(),
+            thread: None,
+        }
+    }
+}
+
 impl Supervisor {
     pub fn start(registry: Registry) -> Self {
         let (commands, receiver) = mpsc::channel();
@@ -86,13 +95,12 @@ impl Supervisor {
     }
 
     fn stop_thread(&mut self) -> thread::Result<()> {
-        let _ = self.commands.send(Message::Shutdown);
+        let Some(thread) = self.thread.take() else {
+            return Ok(());
+        };
 
-        if let Some(thread) = self.thread.take() {
-            thread.join()
-        } else {
-            Ok(())
-        }
+        let _ = self.commands.send(Message::Shutdown);
+        thread.join()
     }
 }
 

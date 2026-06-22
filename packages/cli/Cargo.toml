@@ -8,3 +8,4 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 rack-core = { path = "../core" }
+rack-services = { path = "../services" }

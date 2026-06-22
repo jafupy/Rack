@@ -16,6 +16,7 @@ use rack_core::{config::Service as ServiceConfig, utils::expand_home};
 
 pub use error::ProcessError;
 use ports::listen_ports;
+pub use ports::parse_listen_ports;
 use signal::terminate_group;
 
 const PORT_POLL_INTERVAL: Duration = Duration::from_millis(100);

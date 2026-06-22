@@ -167,6 +167,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "rack-core",
+ "rack-services",
 ]
 
 [[package]]
