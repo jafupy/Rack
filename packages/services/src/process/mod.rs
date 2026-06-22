@@ -3,10 +3,12 @@ mod ports;
 mod signal;
 
 use std::{
-    env, io,
+    env,
+    io::{self, BufRead, BufReader, Read},
     os::unix::process::CommandExt,
-    process::{Child, Command},
-    thread,
+    process::{Child, Command, Stdio},
+    sync::mpsc::{self, Receiver},
+    thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
@@ -21,28 +23,39 @@ const PORT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 pub struct Process {
     child: Child,
     pgid: i32,
+    output: Receiver<String>,
+    _output_threads: Vec<JoinHandle<()>>,
 }
 
 impl Process {
     pub fn spawn(id: &str, config: &ServiceConfig) -> Result<Self, ProcessError> {
         let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
         let mut command = Command::new(shell);
-        command.arg("-c").arg(&config.run).process_group(0);
+        command
+            .arg("-c")
+            .arg(&config.run)
+            .process_group(0)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         if !config.working_dir.is_empty() {
             command.current_dir(expand_home(&config.working_dir));
         }
 
-        let child = command
+        let mut child = command
             .spawn()
             .map_err(|source| ProcessError::StartFailed {
                 service: id.to_string(),
                 source,
             })?;
 
+        let (output, output_threads) = capture_output(&mut child);
+
         Ok(Self {
             pgid: child.id() as i32,
             child,
+            output,
+            _output_threads: output_threads,
         })
     }
 
@@ -64,6 +77,10 @@ impl Process {
         self.child.try_wait().map(|status| status.is_some())
     }
 
+    pub fn drain_output(&mut self) -> Vec<String> {
+        self.output.try_iter().collect()
+    }
+
     pub fn ports(&self, id: &str) -> Result<Vec<u16>, ProcessError> {
         listen_ports(id, self.pgid)
     }
@@ -80,4 +97,36 @@ impl Process {
             thread::sleep(PORT_POLL_INTERVAL);
         }
     }
+}
+
+fn capture_output(child: &mut Child) -> (Receiver<String>, Vec<JoinHandle<()>>) {
+    let (sender, output) = mpsc::channel();
+    let mut threads = Vec::new();
+
+    if let Some(stdout) = child.stdout.take() {
+        threads.push(read_output(stdout, sender.clone()));
+    }
+
+    if let Some(stderr) = child.stderr.take() {
+        threads.push(read_output(stderr, sender));
+    }
+
+    (output, threads)
+}
+
+fn read_output(stream: impl Read + Send + 'static, sender: mpsc::Sender<String>) -> JoinHandle<()> {
+    thread::spawn(move || {
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    let _ = sender.send(line.clone());
+                }
+            }
+        }
+    })
 }

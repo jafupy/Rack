@@ -117,6 +117,16 @@ pub extern "C" fn rack_services_stop_service(id: *const c_char) -> *mut c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn rack_services_log(id: *const c_char) -> *mut c_char {
+    with_service_id_value(id, |runtime, id| {
+        runtime
+            .supervisor
+            .log(id)
+            .map_err(|error| error.to_string())
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn rack_services_shutdown() -> *mut c_char {
     ffi_result(|| {
         let mut runtime = RUNTIME.lock().map_err(|error| error.to_string())?;
@@ -136,14 +146,23 @@ fn with_service_id(
     id: *const c_char,
     action: impl FnOnce(&RackRuntime, &str) -> Result<(), String>,
 ) -> *mut c_char {
+    with_service_id_value(id, |runtime, id| {
+        action(runtime, id)?;
+        Ok(String::new())
+    })
+}
+
+fn with_service_id_value(
+    id: *const c_char,
+    action: impl FnOnce(&RackRuntime, &str) -> Result<String, String>,
+) -> *mut c_char {
     ffi_result(|| {
         let id = unsafe { c_string(id) }?;
         let runtime = RUNTIME.lock().map_err(|error| error.to_string())?;
         let runtime = runtime
             .as_ref()
             .ok_or_else(|| "rack services runtime has not been initialized".to_string())?;
-        action(runtime, &id)?;
-        Ok(String::new())
+        action(runtime, &id)
     })
 }
 

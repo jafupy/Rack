@@ -45,6 +45,13 @@ impl Supervisor {
         })
     }
 
+    pub fn log(&self, id: impl Into<String>) -> Result<String, SupervisorError> {
+        self.request(|reply| Message::Log {
+            id: id.into(),
+            reply,
+        })
+    }
+
     pub fn start_service(&self, id: impl Into<String>) -> Result<(), SupervisorError> {
         self.request(|reply| Message::Start {
             id: id.into(),

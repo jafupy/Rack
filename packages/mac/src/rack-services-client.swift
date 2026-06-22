@@ -25,7 +25,10 @@ final class RackServicesClient: RackRuntimeClient {
     _ = RackServices.string(rackServicesShutdown())
   }
 
-  func log(for id: String) -> String { "" }
+  func log(for id: String) -> String {
+    (try? id.withCString { try RackServices.value(rackServicesLog($0)) }) ?? ""
+  }
+
   func logFilePath(for id: String) -> String? { nil }
   func openInTerminal(id: String) {}
   func hooks() -> [HookSummary] { [] }
@@ -129,6 +132,9 @@ private func rackServicesStartService(_ id: UnsafePointer<CChar>) -> UnsafeMutab
 
 @_silgen_name("rack_services_stop_service")
 private func rackServicesStopService(_ id: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("rack_services_log")
+private func rackServicesLog(_ id: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("rack_services_shutdown")
 private func rackServicesShutdown() -> UnsafeMutablePointer<CChar>?

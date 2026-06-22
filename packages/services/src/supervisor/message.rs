@@ -20,6 +20,10 @@ pub(super) enum Message {
         id: String,
         reply: Reply<ServiceState>,
     },
+    Log {
+        id: String,
+        reply: Reply<String>,
+    },
     Start {
         id: String,
         reply: Reply<()>,

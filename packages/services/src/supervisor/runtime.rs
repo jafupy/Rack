@@ -12,25 +12,33 @@ use crate::{
 use super::{Message, SupervisorError};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
+const MAX_LOG_LINES: usize = 400;
 
 pub(super) fn run(mut registry: Registry, commands: Receiver<Message>) {
     let mut processes = HashMap::new();
+    let mut logs = HashMap::new();
 
     loop {
-        reap_exited(&mut registry, &mut processes);
+        collect_output(&mut processes, &mut logs);
+        reap_exited(&mut registry, &mut processes, &mut logs);
 
         match commands.recv_timeout(POLL_INTERVAL) {
             Ok(Message::Shutdown) | Err(RecvTimeoutError::Disconnected) => {
                 stop_all(processes);
                 break;
             }
-            Ok(command) => handle(command, &mut registry, &mut processes),
+            Ok(command) => handle(command, &mut registry, &mut processes, &mut logs),
             Err(RecvTimeoutError::Timeout) => {}
         }
     }
 }
 
-fn handle(command: Message, registry: &mut Registry, processes: &mut HashMap<String, Process>) {
+fn handle(
+    command: Message,
+    registry: &mut Registry,
+    processes: &mut HashMap<String, Process>,
+    logs: &mut HashMap<String, String>,
+) {
     match command {
         Message::Register { config, reply } => {
             let _ = reply.send(registry.register(config).map_err(Into::into));
@@ -41,7 +49,14 @@ fn handle(command: Message, registry: &mut Registry, processes: &mut HashMap<Str
         Message::Status { id, reply } => {
             let _ = reply.send(registry.status(&id).map_err(Into::into));
         }
+        Message::Log { id, reply } => {
+            if let Some(process) = processes.get_mut(&id) {
+                append_output(logs, &id, process.drain_output());
+            }
+            let _ = reply.send(Ok(logs.get(&id).cloned().unwrap_or_default()));
+        }
         Message::Start { id, reply } => {
+            logs.insert(id.clone(), String::new());
             let _ = reply.send(start_service(registry, processes, &id));
         }
         Message::Stop { id, reply } => {
@@ -92,7 +107,17 @@ fn stop_service(
     Ok(())
 }
 
-fn reap_exited(registry: &mut Registry, processes: &mut HashMap<String, Process>) {
+fn collect_output(processes: &mut HashMap<String, Process>, logs: &mut HashMap<String, String>) {
+    for (id, process) in processes {
+        append_output(logs, id, process.drain_output());
+    }
+}
+
+fn reap_exited(
+    registry: &mut Registry,
+    processes: &mut HashMap<String, Process>,
+    logs: &mut HashMap<String, String>,
+) {
     processes.retain(|id, process| match process.has_exited() {
         Ok(false) => {
             match process.ports(id) {
@@ -106,15 +131,37 @@ fn reap_exited(registry: &mut Registry, processes: &mut HashMap<String, Process>
             true
         }
         Ok(true) => {
+            append_output(logs, id, process.drain_output());
             let _ = registry.mark_stopped(id);
             false
         }
         Err(error) => {
             eprintln!("failed to poll service process for {id}: {error}");
+            append_output(logs, id, process.drain_output());
             let _ = registry.mark_stopped(id);
             false
         }
     });
+}
+
+fn append_output(logs: &mut HashMap<String, String>, id: &str, output: Vec<String>) {
+    if output.is_empty() {
+        return;
+    }
+
+    let log = logs.entry(id.to_string()).or_default();
+    for chunk in output {
+        log.push_str(&chunk);
+    }
+
+    let lines = log.lines().count();
+    if lines > MAX_LOG_LINES {
+        *log = log
+            .lines()
+            .skip(lines - MAX_LOG_LINES)
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
 }
 
 fn update_ports(
