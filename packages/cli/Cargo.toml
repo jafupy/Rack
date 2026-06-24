@@ -7,5 +7,6 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }
 rack-core = { path = "../core" }
 rack-services = { path = "../services" }
