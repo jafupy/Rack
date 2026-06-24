@@ -3,9 +3,29 @@ use std::{ffi::CStr, os::raw::c_char};
 use crate::{runtime::RackRuntime, RUNTIME};
 
 use super::{
-    status::{free_string, string_ptr, RackServicesStatus, RackServicesStatusCode},
-    types::{free_snapshot, RackServicesSnapshot},
+    status::{free_string, string_ptr, RackServicesStatus, RackServicesStatusCode, ABI_VERSION},
+    types::{free_snapshot, RackServicesServiceSnapshot, RackServicesSnapshot},
 };
+
+#[no_mangle]
+pub extern "C" fn rack_services_abi_version() -> u32 {
+    ABI_VERSION
+}
+
+#[no_mangle]
+pub extern "C" fn rack_services_status_size() -> usize {
+    std::mem::size_of::<RackServicesStatus>()
+}
+
+#[no_mangle]
+pub extern "C" fn rack_services_snapshot_size() -> usize {
+    std::mem::size_of::<RackServicesSnapshot>()
+}
+
+#[no_mangle]
+pub extern "C" fn rack_services_service_snapshot_size() -> usize {
+    std::mem::size_of::<RackServicesServiceSnapshot>()
+}
 
 #[no_mangle]
 pub extern "C" fn rack_services_init() -> RackServicesStatus {
