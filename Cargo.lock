@@ -1851,6 +1851,7 @@ version = "1.0.0"
 dependencies = [
  "nix 0.29.0",
  "rack-core",
+ "rack-hooks",
  "rack-proxy",
  "serde",
  "serde_json",

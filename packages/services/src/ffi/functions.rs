@@ -89,6 +89,11 @@ pub extern "C" fn rack_services_snapshot_json() -> *mut c_char {
     string_result(|| with_runtime(|runtime| runtime.snapshot_json()))
 }
 
+#[no_mangle]
+pub extern "C" fn rack_services_hooks_json() -> *mut c_char {
+    string_result(|| with_runtime(|runtime| runtime.hooks_json()))
+}
+
 fn service_command(
     id: *const c_char,
     command: impl FnOnce(&RackRuntime, &str) -> Result<(), String>,

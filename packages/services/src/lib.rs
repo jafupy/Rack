@@ -1,5 +1,6 @@
 pub mod control;
 pub mod ffi;
+pub mod hooks;
 pub mod process;
 pub mod registry;
 mod runtime;

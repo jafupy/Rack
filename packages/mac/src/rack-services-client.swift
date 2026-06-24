@@ -45,7 +45,17 @@ final class RackServicesClient: RackRuntimeClient {
 
   func logFilePath(for id: String) -> String? { nil }
   func openInTerminal(id: String) {}
-  func hooks() -> [HookSummary] { [] }
+
+  func hooks() -> [HookSummary] {
+    do {
+      let json = try RackServices.value(rackServicesHooksJson())
+      return try JSONDecoder().decode([RackHookSummary].self, from: Data(json.utf8)).map(
+        HookSummary.init)
+    } catch {
+      print("failed to load hooks: \(error)")
+      return []
+    }
+  }
 }
 
 extension ServiceConfiguration {
@@ -58,6 +68,29 @@ extension ServiceConfiguration {
       proxyPort: proxyPort,
       status: ServiceStatus(service)
     )
+  }
+}
+
+extension HookSummary {
+  fileprivate init(_ hook: RackHookSummary) {
+    self.init(
+      name: hook.name,
+      routes: hook.routes.map(HookRoute.init),
+      crons: hook.crons.map(HookCron.init),
+      errors: hook.errors
+    )
+  }
+}
+
+extension HookRoute {
+  fileprivate init(_ route: RackHookRouteSummary) {
+    self.init(method: route.method, path: route.path)
+  }
+}
+
+extension HookCron {
+  fileprivate init(_ cron: RackHookCronSummary) {
+    self.init(schedule: cron.schedule, hook: cron.hook)
   }
 }
 
@@ -102,6 +135,23 @@ private enum RackServices {
     guard let pointer else { return "" }
     return String(cString: pointer)
   }
+}
+
+private struct RackHookSummary: Decodable {
+  let name: String
+  let routes: [RackHookRouteSummary]
+  let crons: [RackHookCronSummary]
+  let errors: [String]
+}
+
+private struct RackHookRouteSummary: Decodable {
+  let method: String
+  let path: String
+}
+
+private struct RackHookCronSummary: Decodable {
+  let schedule: String
+  let hook: String
 }
 
 private enum RackServicesError: Error, CustomStringConvertible {
@@ -173,6 +223,9 @@ private func rackServicesLog(_ id: UnsafePointer<CChar>) -> UnsafeMutablePointer
 
 @_silgen_name("rack_services_shutdown")
 private func rackServicesShutdown() -> RackServicesStatus
+
+@_silgen_name("rack_services_hooks_json")
+private func rackServicesHooksJson() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("rack_services_status_free")
 private func rackServicesStatusFree(_ status: RackServicesStatus)

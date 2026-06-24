@@ -8,6 +8,7 @@ use rack_proxy::{ProxyServer, ServiceTarget, TargetTable};
 
 use crate::{
     control::ControlServer,
+    hooks::{self, HookSummary},
     registry::{Registry, ServiceState, ServiceView},
     snapshot::{snapshot_service, Snapshot},
     supervisor::Supervisor,
@@ -19,6 +20,7 @@ pub struct RackRuntime {
     proxy_runtime: tokio::runtime::Runtime,
     proxy: Option<ProxyServer>,
     control: Option<ControlServer>,
+    hooks: Vec<HookSummary>,
 }
 
 impl RackRuntime {
@@ -44,6 +46,7 @@ impl RackRuntime {
 
         let proxy_runtime = tokio::runtime::Runtime::new().map_err(|error| error.to_string())?;
         let proxy = bind_proxy(&proxy_runtime).map_err(|error| error.to_string())?;
+        let hooks = hooks::load_deployed(&proxy.hooks());
         let control = ControlServer::start(
             supervisor.clone(),
             configs.clone(),
@@ -57,11 +60,16 @@ impl RackRuntime {
             proxy_runtime,
             proxy: Some(proxy),
             control: Some(control),
+            hooks,
         })
     }
 
     pub fn snapshot_json(&self) -> Result<String, String> {
         serde_json::to_string(&self.snapshot()?).map_err(|error| error.to_string())
+    }
+
+    pub fn hooks_json(&self) -> Result<String, String> {
+        serde_json::to_string(&self.hooks).map_err(|error| error.to_string())
     }
 
     pub fn snapshot(&self) -> Result<Snapshot, String> {

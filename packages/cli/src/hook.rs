@@ -1,4 +1,8 @@
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use anyhow::{bail, Context, Result};
 
@@ -39,10 +43,7 @@ pub fn deploy(path: &str) -> Result<()> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| anyhow::anyhow!("invalid hook path"))?;
-    let parent = source
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("hook path has no parent"))?;
-    let destination = parent.join(".rack/hooks").join(name);
+    let destination = hooks_dir()?.join(name);
 
     if destination.exists() {
         bail!("deployed hook already exists: {}", destination.display());
@@ -54,6 +55,11 @@ pub fn deploy(path: &str) -> Result<()> {
 
     println!("Deployed hook to {}", destination.display());
     Ok(())
+}
+
+fn hooks_dir() -> Result<PathBuf> {
+    let home = std::env::var_os("HOME").ok_or_else(|| anyhow::anyhow!("HOME is not set"))?;
+    Ok(PathBuf::from(home).join(".rack/hooks"))
 }
 
 fn cargo_toml(path: &Path) -> Result<String> {

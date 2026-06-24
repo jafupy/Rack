@@ -14,6 +14,7 @@ public final class RackViewModel: ObservableObject {
     do {
       try runtime?.initialize()
       reloadServices()
+      reloadHooks()
       startRefreshing()
     } catch {
       print("failed to initialize rack runtime: \(error)")
