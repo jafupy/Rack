@@ -1345,11 +1345,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rack-hooks"
+version = "1.0.0"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "rack-proxy"
 version = "1.0.0"
 dependencies = [
  "async-trait",
  "pingora",
+ "rack-hooks",
  "thiserror 2.0.18",
  "tokio",
 ]

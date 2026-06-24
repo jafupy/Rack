@@ -1,13 +1,9 @@
 [package]
-name = "rack-proxy"
+name = "rack-hooks"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-tokio.workspace = true
 thiserror.workspace = true
-rack-hooks = { path = "../hooks" }
-pingora = { version = "0.8.1", features = ["proxy"] }
-async-trait = "0.1"

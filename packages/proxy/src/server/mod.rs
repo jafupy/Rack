@@ -6,6 +6,7 @@ use pingora::{
     proxy::http_proxy_service,
     server::{configuration::ServerConf, RunArgs, Server, ShutdownSignal, ShutdownSignalWatch},
 };
+use rack_hooks::HookRegistry;
 use thiserror::Error;
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -34,6 +35,7 @@ pub enum ProxyError {
 pub struct ProxyServer {
     addr: SocketAddr,
     services: ServiceRoutes,
+    hooks: HookRegistry,
     shutdown: watch::Sender<bool>,
     task: JoinHandle<()>,
 }
@@ -42,13 +44,15 @@ impl ProxyServer {
     pub async fn bind(addr: SocketAddr, targets: TargetTable) -> Result<Self, ProxyError> {
         let addr = reserve_addr(addr).await?;
         let services = ServiceRoutes::new(targets);
+        let hooks = HookRegistry::default();
         let (shutdown, stop) = watch::channel(false);
-        let task = run_pingora(addr, services.clone(), stop)?;
+        let task = run_pingora(addr, services.clone(), hooks.clone(), stop)?;
         wait_until_ready(addr).await?;
 
         Ok(Self {
             addr,
             services,
+            hooks,
             shutdown,
             task,
         })
@@ -64,6 +68,10 @@ impl ProxyServer {
 
     pub fn targets(&self) -> ServiceRoutes {
         self.services()
+    }
+
+    pub fn hooks(&self) -> HookRegistry {
+        self.hooks.clone()
     }
 
     pub async fn shutdown(self) -> Result<(), ProxyError> {
@@ -101,6 +109,7 @@ async fn reserve_addr(addr: SocketAddr) -> Result<SocketAddr, ProxyError> {
 fn run_pingora(
     addr: SocketAddr,
     services: ServiceRoutes,
+    hooks: HookRegistry,
     stop: watch::Receiver<bool>,
 ) -> Result<JoinHandle<()>, ProxyError> {
     let addr = addr.to_string();
@@ -110,7 +119,8 @@ fn run_pingora(
             let mut server = Server::new_with_opt_and_conf(None, ServerConf::new().unwrap());
             server.bootstrap();
 
-            let mut proxy = http_proxy_service(&server.configuration, RackProxy::new(services));
+            let mut proxy =
+                http_proxy_service(&server.configuration, RackProxy::new(services, hooks));
             proxy.add_tcp(&addr);
             server.add_service(proxy);
             server.run(RunArgs {

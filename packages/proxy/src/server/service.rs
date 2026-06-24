@@ -5,6 +5,7 @@ use pingora::{
     upstreams::peer::HttpPeer,
     Error, ErrorType, Result,
 };
+use rack_hooks::HookRegistry;
 
 use crate::{
     hooks,
@@ -14,11 +15,12 @@ use crate::{
 #[derive(Clone)]
 pub(super) struct RackProxy {
     routes: ServiceRoutes,
+    hooks: HookRegistry,
 }
 
 impl RackProxy {
-    pub(super) fn new(routes: ServiceRoutes) -> Self {
-        Self { routes }
+    pub(super) fn new(routes: ServiceRoutes, hooks: HookRegistry) -> Self {
+        Self { routes, hooks }
     }
 }
 
@@ -41,7 +43,7 @@ impl ProxyHttp for RackProxy {
         };
 
         if hooks::is_hooks_host(&host) {
-            return respond(session, 501, "rack.local hooks are not wired yet").await;
+            return hooks::dispatch(session, &self.hooks, &host).await;
         }
 
         let Some(origin) = services::origin_from_host(&host) else {
