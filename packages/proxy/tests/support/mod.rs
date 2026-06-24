@@ -22,11 +22,7 @@ pub async fn test_proxy(host: &str, backend_port: u16) -> ProxyServer {
 pub async fn request(addr: SocketAddr, request: &str) -> String {
     let mut stream = TcpStream::connect(addr).await.unwrap();
     stream.write_all(request.as_bytes()).await.unwrap();
-    stream.shutdown().await.unwrap();
-
-    let mut response = String::new();
-    stream.read_to_string(&mut response).await.unwrap();
-    response
+    read_http_response(&mut stream).await
 }
 
 pub async fn read_until(stream: &mut TcpStream, needle: &[u8]) -> String {
@@ -102,6 +98,15 @@ impl UpgradeBackend {
     pub fn port(&self) -> u16 {
         self.port
     }
+}
+
+async fn read_http_response(stream: &mut TcpStream) -> String {
+    let mut response = read_until(stream, b"\r\n\r\n").await.into_bytes();
+    let content_length = parse_content_length(&response).unwrap_or(0);
+    let mut body = vec![0; content_length];
+    stream.read_exact(&mut body).await.unwrap();
+    response.extend_from_slice(&body);
+    String::from_utf8(response).unwrap()
 }
 
 async fn read_http_request(stream: &mut TcpStream) -> String {

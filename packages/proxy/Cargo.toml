@@ -8,3 +8,5 @@ repository.workspace = true
 [dependencies]
 tokio.workspace = true
 thiserror.workspace = true
+pingora = { version = "0.8.1", features = ["proxy"] }
+async-trait = "0.1"

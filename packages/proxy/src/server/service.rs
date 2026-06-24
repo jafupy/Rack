@@ -1,46 +1,97 @@
-use tokio::net::TcpStream;
+use async_trait::async_trait;
+use pingora::{
+    http::ResponseHeader,
+    proxy::{ProxyHttp, Session},
+    upstreams::peer::HttpPeer,
+    Error, ErrorType, Result,
+};
 
 use crate::{
     hooks,
-    services::{self, ForwardError, ServiceRoutes},
+    services::{self, Destination, ServiceRoutes},
 };
 
-use super::response::{host_header, read_request_head, write_response};
+#[derive(Clone)]
+pub(super) struct RackProxy {
+    routes: ServiceRoutes,
+}
 
-pub(super) async fn handle_client(mut client: TcpStream, routes: ServiceRoutes) {
-    let Ok(request) = read_request_head(&mut client).await else {
-        return;
-    };
-    let Some(host) = host_header(&request) else {
-        let _ = write_response(&mut client, 400, "missing Host header").await;
-        return;
-    };
+impl RackProxy {
+    pub(super) fn new(routes: ServiceRoutes) -> Self {
+        Self { routes }
+    }
+}
 
-    if hooks::is_hooks_host(host) {
-        let _ = write_response(&mut client, 501, "rack.local hooks are not wired yet").await;
-        return;
+#[derive(Default)]
+pub(super) struct RequestCtx {
+    destination: Option<Destination>,
+}
+
+#[async_trait]
+impl ProxyHttp for RackProxy {
+    type CTX = RequestCtx;
+
+    fn new_ctx(&self) -> Self::CTX {
+        RequestCtx::default()
     }
 
-    let Some(origin) = services::origin_from_host(host) else {
-        let _ = write_response(
-            &mut client,
-            404,
-            &format!("unsupported Host header `{host}`"),
-        )
-        .await;
-        return;
-    };
+    async fn request_filter(&self, session: &mut Session, ctx: &mut Self::CTX) -> Result<bool> {
+        let Some(host) = host_header(session) else {
+            return respond(session, 400, "missing Host header").await;
+        };
 
-    match services::forward(&mut client, &routes, &origin, &request).await {
-        Ok(()) => {}
-        Err(ForwardError::MissingDestination) => {
-            let _ = write_response(&mut client, 502, "service destination is not running").await;
+        if hooks::is_hooks_host(&host) {
+            return respond(session, 501, "rack.local hooks are not wired yet").await;
         }
-        Err(ForwardError::Unavailable) => {
-            let _ = write_response(&mut client, 502, "service destination is unavailable").await;
-        }
-        Err(ForwardError::WriteFailed) => {
-            let _ = write_response(&mut client, 502, "failed to forward request").await;
-        }
+
+        let Some(origin) = services::origin_from_host(&host) else {
+            return respond(session, 404, &format!("unsupported Host header `{host}`")).await;
+        };
+
+        let Some(destination) = self.routes.destination_for(&origin) else {
+            return respond(session, 502, "service destination is not running").await;
+        };
+
+        ctx.destination = Some(destination);
+        Ok(false)
     }
+
+    async fn upstream_peer(
+        &self,
+        _session: &mut Session,
+        ctx: &mut Self::CTX,
+    ) -> Result<Box<HttpPeer>> {
+        let Some(destination) = &ctx.destination else {
+            return Error::e_explain(ErrorType::InternalError, "missing proxy destination");
+        };
+
+        Ok(Box::new(HttpPeer::new(
+            ("127.0.0.1", destination.port()),
+            false,
+            "localhost".to_string(),
+        )))
+    }
+}
+
+fn host_header(session: &Session) -> Option<String> {
+    session
+        .req_header()
+        .headers
+        .get("host")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|host| !host.is_empty())
+        .map(str::to_string)
+}
+
+async fn respond(session: &mut Session, status: u16, message: &str) -> Result<bool> {
+    let body = format!("{message}\n");
+    let mut response = ResponseHeader::build(status, Some(body.len()))?;
+    response.insert_header("content-type", "text/plain; charset=utf-8")?;
+    response.insert_header("connection", "close")?;
+    session
+        .write_response_header(Box::new(response), false)
+        .await?;
+    session.write_response_body(Some(body.into()), true).await?;
+    Ok(true)
 }

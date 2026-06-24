@@ -1,46 +1,55 @@
-mod response;
 mod service;
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, thread::JoinHandle};
 
+use pingora::{
+    proxy::http_proxy_service,
+    server::{configuration::ServerConf, RunArgs, Server, ShutdownSignal, ShutdownSignalWatch},
+};
 use thiserror::Error;
-use tokio::{io, net::TcpListener, sync::oneshot, task::JoinHandle};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::watch,
+    time::{sleep, Duration, Instant},
+};
 
 use crate::services::{ServiceRoutes, TargetTable};
-use service::handle_client;
+use service::RackProxy;
 
 #[derive(Debug, Error)]
 pub enum ProxyError {
     #[error("failed to bind proxy listener at {addr}: {source}")]
-    Bind { addr: SocketAddr, source: io::Error },
+    Bind {
+        addr: SocketAddr,
+        source: std::io::Error,
+    },
 
-    #[error("proxy task failed: {0}")]
-    Task(#[from] tokio::task::JoinError),
+    #[error("failed to start pingora proxy: {0}")]
+    Start(String),
+
+    #[error("proxy thread failed")]
+    Task,
 }
 
 pub struct ProxyServer {
     addr: SocketAddr,
     services: ServiceRoutes,
-    shutdown: Option<oneshot::Sender<()>>,
+    shutdown: watch::Sender<bool>,
     task: JoinHandle<()>,
 }
 
 impl ProxyServer {
     pub async fn bind(addr: SocketAddr, targets: TargetTable) -> Result<Self, ProxyError> {
-        let listener = TcpListener::bind(addr)
-            .await
-            .map_err(|source| ProxyError::Bind { addr, source })?;
-        let addr = listener
-            .local_addr()
-            .map_err(|source| ProxyError::Bind { addr, source })?;
+        let addr = reserve_addr(addr).await?;
         let services = ServiceRoutes::new(targets);
-        let (shutdown, stop) = oneshot::channel();
-        let task = tokio::spawn(run(listener, services.clone(), stop));
+        let (shutdown, stop) = watch::channel(false);
+        let task = run_pingora(addr, services.clone(), stop)?;
+        wait_until_ready(addr).await?;
 
         Ok(Self {
             addr,
             services,
-            shutdown: Some(shutdown),
+            shutdown,
             task,
         })
     }
@@ -57,23 +66,70 @@ impl ProxyServer {
         self.services()
     }
 
-    pub async fn shutdown(mut self) -> Result<(), ProxyError> {
-        if let Some(shutdown) = self.shutdown.take() {
-            let _ = shutdown.send(());
-        }
-        self.task.await?;
-        Ok(())
+    pub async fn shutdown(self) -> Result<(), ProxyError> {
+        let _ = self.shutdown.send(true);
+        tokio::task::spawn_blocking(move || self.task.join())
+            .await
+            .map_err(|_| ProxyError::Task)?
+            .map_err(|_| ProxyError::Task)
     }
 }
 
-async fn run(listener: TcpListener, services: ServiceRoutes, mut stop: oneshot::Receiver<()>) {
-    loop {
-        tokio::select! {
-            _ = &mut stop => break,
-            accepted = listener.accept() => {
-                let Ok((client, _)) = accepted else { continue };
-                tokio::spawn(handle_client(client, services.clone()));
-            }
+async fn wait_until_ready(addr: SocketAddr) -> Result<(), ProxyError> {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        if TcpStream::connect(addr).await.is_ok() {
+            return Ok(());
         }
+        sleep(Duration::from_millis(10)).await;
+    }
+
+    Err(ProxyError::Start(format!("proxy did not listen at {addr}")))
+}
+
+async fn reserve_addr(addr: SocketAddr) -> Result<SocketAddr, ProxyError> {
+    let listener = TcpListener::bind(addr)
+        .await
+        .map_err(|source| ProxyError::Bind { addr, source })?;
+    let bound = listener
+        .local_addr()
+        .map_err(|source| ProxyError::Bind { addr, source })?;
+    drop(listener);
+    Ok(bound)
+}
+
+fn run_pingora(
+    addr: SocketAddr,
+    services: ServiceRoutes,
+    stop: watch::Receiver<bool>,
+) -> Result<JoinHandle<()>, ProxyError> {
+    let addr = addr.to_string();
+    let handle = std::thread::Builder::new()
+        .name("rack-proxy".to_string())
+        .spawn(move || {
+            let mut server = Server::new_with_opt_and_conf(None, ServerConf::new().unwrap());
+            server.bootstrap();
+
+            let mut proxy = http_proxy_service(&server.configuration, RackProxy::new(services));
+            proxy.add_tcp(&addr);
+            server.add_service(proxy);
+            server.run(RunArgs {
+                shutdown_signal: Box::new(ProxyShutdown { stop }),
+            });
+        })
+        .map_err(|error| ProxyError::Start(error.to_string()))?;
+    Ok(handle)
+}
+
+struct ProxyShutdown {
+    stop: watch::Receiver<bool>,
+}
+
+#[async_trait::async_trait]
+impl ShutdownSignalWatch for ProxyShutdown {
+    async fn recv(&self) -> ShutdownSignal {
+        let mut stop = self.stop.clone();
+        let _ = stop.changed().await;
+        ShutdownSignal::FastShutdown
     }
 }
