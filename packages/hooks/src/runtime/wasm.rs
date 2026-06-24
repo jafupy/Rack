@@ -5,7 +5,7 @@ use wasmtime::{Engine, Instance, Memory, Module, Store};
 
 use crate::{HookEndpoint, HookRequest, HookResponse};
 
-use super::{load_metadata, metadata::MetadataError};
+use super::{load_metadata, metadata::MetadataError, WasmHookEndpoint};
 
 pub struct HookRuntime {
     engine: Engine,
@@ -32,14 +32,24 @@ impl HookRuntime {
         let mut endpoints = Vec::new();
 
         for hook in metadata.hooks {
-            endpoints.push(HookEndpoint::new(&hook.id, &hook.method, &hook.path));
-            self.modules.insert(
-                hook.id,
-                WasmModule {
-                    module: module.clone(),
-                    entry: hook.entry,
-                },
-            );
+            match hook {
+                WasmHookEndpoint::Http {
+                    id,
+                    method,
+                    path,
+                    entry,
+                } => {
+                    endpoints.push(HookEndpoint::new(&id, method, path));
+                    self.modules.insert(
+                        id,
+                        WasmModule {
+                            module: module.clone(),
+                            entry,
+                        },
+                    );
+                }
+                WasmHookEndpoint::Cron { .. } => {}
+            }
         }
 
         Ok(endpoints)

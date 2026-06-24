@@ -1,0 +1,15 @@
+[package]
+name = "rack-sdk-macro"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+serde_json.workspace = true
+syn = { version = "2", features = ["full"] }

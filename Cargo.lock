@@ -1786,6 +1786,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
+name = "rack"
+version = "1.0.0"
+dependencies = [
+ "rack-sdk-macro",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rack-cli"
 version = "1.0.0"
 dependencies = [
@@ -1823,6 +1832,16 @@ dependencies = [
  "rack-hooks",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "rack-sdk-macro"
+version = "1.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn 2.0.118",
 ]
 
 [[package]]

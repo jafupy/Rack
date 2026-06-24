@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 
 use super::METADATA_SECTION;
@@ -8,12 +8,90 @@ pub struct HookModuleMetadata {
     pub hooks: Vec<WasmHookEndpoint>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WasmHookEndpoint {
-    pub id: String,
-    pub method: String,
-    pub path: String,
-    pub entry: String,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum WasmHookEndpoint {
+    Http {
+        id: String,
+        method: String,
+        path: String,
+        entry: String,
+    },
+    Cron {
+        id: String,
+        schedule: String,
+        entry: String,
+    },
+}
+
+impl<'de> Deserialize<'de> for WasmHookEndpoint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawEndpoint::deserialize(deserializer).map(Into::into)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawEndpoint {
+    Tagged(TaggedEndpoint),
+    Legacy {
+        id: String,
+        method: String,
+        path: String,
+        entry: String,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum TaggedEndpoint {
+    Http {
+        id: String,
+        method: String,
+        path: String,
+        entry: String,
+    },
+    Cron {
+        id: String,
+        schedule: String,
+        entry: String,
+    },
+}
+
+impl From<RawEndpoint> for WasmHookEndpoint {
+    fn from(value: RawEndpoint) -> Self {
+        match value {
+            RawEndpoint::Tagged(TaggedEndpoint::Http {
+                id,
+                method,
+                path,
+                entry,
+            })
+            | RawEndpoint::Legacy {
+                id,
+                method,
+                path,
+                entry,
+            } => Self::Http {
+                id,
+                method,
+                path,
+                entry,
+            },
+            RawEndpoint::Tagged(TaggedEndpoint::Cron {
+                id,
+                schedule,
+                entry,
+            }) => Self::Cron {
+                id,
+                schedule,
+                entry,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -33,7 +111,22 @@ pub enum MetadataError {
 
 pub fn load_metadata(wasm: &[u8]) -> Result<HookModuleMetadata, MetadataError> {
     let section = custom_section(wasm, METADATA_SECTION)?.ok_or(MetadataError::Missing)?;
-    Ok(serde_json::from_slice(section)?)
+    parse_metadata(section)
+}
+
+fn parse_metadata(section: &[u8]) -> Result<HookModuleMetadata, MetadataError> {
+    if let Ok(metadata) = serde_json::from_slice(section) {
+        return Ok(metadata);
+    }
+
+    let mut hooks = Vec::new();
+    for line in section.split(|byte| *byte == b'\n') {
+        if line.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        hooks.push(serde_json::from_slice(line)?);
+    }
+    Ok(HookModuleMetadata { hooks })
 }
 
 fn custom_section<'a>(wasm: &'a [u8], wanted: &str) -> Result<Option<&'a [u8]>, MetadataError> {

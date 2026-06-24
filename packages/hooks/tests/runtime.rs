@@ -1,4 +1,4 @@
-use rack_hooks::{load_metadata, HookRegistry, HookRequest, METADATA_SECTION};
+use rack_hooks::{load_metadata, HookRegistry, HookRequest, WasmHookEndpoint, METADATA_SECTION};
 
 #[test]
 fn reads_hook_metadata_from_wasm_custom_section() {
@@ -6,10 +6,36 @@ fn reads_hook_metadata_from_wasm_custom_section() {
 
     let metadata = load_metadata(&wasm).unwrap();
 
-    assert_eq!(metadata.hooks[0].id, "hello");
-    assert_eq!(metadata.hooks[0].method, "GET");
-    assert_eq!(metadata.hooks[0].path, "/hello");
-    assert_eq!(metadata.hooks[0].entry, "hello");
+    assert_eq!(
+        metadata.hooks[0],
+        WasmHookEndpoint::Http {
+            id: "hello".into(),
+            method: "GET".into(),
+            path: "/hello".into(),
+            entry: "hello".into(),
+        }
+    );
+}
+
+#[test]
+fn reads_ndjson_hook_metadata_from_wasm_custom_section() {
+    let metadata = load_metadata(&with_metadata(
+        test_module(),
+        br#"{"kind":"http","id":"hello","method":"GET","path":"/hello","entry":"hello"}
+{"kind":"cron","id":"tick","schedule":"every minute","entry":"tick"}
+"#,
+    ))
+    .unwrap();
+
+    assert_eq!(metadata.hooks.len(), 2);
+    assert_eq!(
+        metadata.hooks[1],
+        WasmHookEndpoint::Cron {
+            id: "tick".into(),
+            schedule: "every minute".into(),
+            entry: "tick".into(),
+        }
+    );
 }
 
 #[test]
@@ -56,16 +82,21 @@ fn test_wasm() -> Vec<u8> {
         "#,
     );
 
-    let wasm = wat::parse_str(wat).unwrap();
-    with_metadata(wasm)
+    with_metadata(
+        wat::parse_str(wat).unwrap(),
+        br#"{"hooks":[{"id":"hello","method":"GET","path":"/hello","entry":"hello"}]}"#,
+    )
+}
+
+fn test_module() -> Vec<u8> {
+    wat::parse_str("(module)").unwrap()
 }
 
 fn wat_bytes(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("\\{byte:02x}")).collect()
 }
 
-fn with_metadata(mut wasm: Vec<u8>) -> Vec<u8> {
-    let metadata = br#"{"hooks":[{"id":"hello","method":"GET","path":"/hello","entry":"hello"}]}"#;
+fn with_metadata(mut wasm: Vec<u8>, metadata: &[u8]) -> Vec<u8> {
     let mut payload = Vec::new();
     write_leb(METADATA_SECTION.len() as u32, &mut payload);
     payload.extend_from_slice(METADATA_SECTION.as_bytes());

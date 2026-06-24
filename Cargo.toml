@@ -6,8 +6,8 @@ members = [
   "packages/core",
   "packages/hooks",
   "packages/proxy",
-  # "packages/sdk",
-  # "packages/sdk-macro",
+  "packages/sdk",
+  "packages/sdk-macro",
   "packages/services",
 ]
 
