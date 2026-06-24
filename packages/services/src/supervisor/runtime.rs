@@ -82,7 +82,7 @@ fn start_service(
         return Err(ProcessError::UnexpectedHandle(id.to_string()).into());
     }
 
-    let process = Process::spawn(id, &config).inspect_err(|_| {
+    let mut process = Process::spawn(id, &config).inspect_err(|_| {
         let _ = registry.mark_stopped(id);
     })?;
 
@@ -114,11 +114,12 @@ fn stop_service(
 ) -> Result<(), SupervisorError> {
     registry.require_started(id)?;
 
-    let Some(process) = processes.remove(id) else {
+    let Some(process) = processes.get_mut(id) else {
         return Err(ProcessError::MissingHandle(id.to_string()).into());
     };
 
     process.kill(id)?;
+    processes.remove(id);
     registry.mark_stopped(id)?;
     Ok(())
 }
@@ -206,7 +207,7 @@ fn update_ports(
 }
 
 fn stop_all(processes: HashMap<String, Process>) {
-    for (id, process) in processes {
+    for (id, mut process) in processes {
         let _ = process.kill(&id);
     }
 }

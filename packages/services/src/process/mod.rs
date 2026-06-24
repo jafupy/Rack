@@ -71,7 +71,7 @@ impl Process {
         self.pgid
     }
 
-    pub fn kill(mut self, id: &str) -> Result<(), ProcessError> {
+    pub fn kill(&mut self, id: &str) -> Result<(), ProcessError> {
         terminate_group(id, self.pgid)?;
         let _ = self.child.wait();
         Ok(())
