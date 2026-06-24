@@ -47,14 +47,6 @@ public struct MenuBarContentView: View {
         .buttonStyle(.plain)
 
         Spacer()
-
-        Button {
-          model.reloadHooks()
-        } label: {
-          Image(systemName: "arrow.clockwise")
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
       }
 
       if hooksExpanded {

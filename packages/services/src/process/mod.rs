@@ -36,6 +36,9 @@ impl Process {
             .arg("-c")
             .arg(&config.run)
             .process_group(0)
+            .env("FORCE_COLOR", "1")
+            .env("CLICOLOR_FORCE", "1")
+            .env("TERM", "xterm-256color")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
