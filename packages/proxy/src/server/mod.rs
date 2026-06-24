@@ -1,13 +1,13 @@
-mod connection;
-mod http;
+mod response;
+mod service;
 
 use std::net::SocketAddr;
 
 use thiserror::Error;
 use tokio::{io, net::TcpListener, sync::oneshot, task::JoinHandle};
 
-use crate::{SharedTargets, TargetTable};
-use connection::handle_client;
+use crate::services::{ServiceRoutes, TargetTable};
+use service::handle_client;
 
 #[derive(Debug, Error)]
 pub enum ProxyError {
@@ -20,7 +20,7 @@ pub enum ProxyError {
 
 pub struct ProxyServer {
     addr: SocketAddr,
-    targets: SharedTargets,
+    services: ServiceRoutes,
     shutdown: Option<oneshot::Sender<()>>,
     task: JoinHandle<()>,
 }
@@ -33,13 +33,13 @@ impl ProxyServer {
         let addr = listener
             .local_addr()
             .map_err(|source| ProxyError::Bind { addr, source })?;
-        let targets = SharedTargets::new(targets);
+        let services = ServiceRoutes::new(targets);
         let (shutdown, stop) = oneshot::channel();
-        let task = tokio::spawn(run(listener, targets.clone(), stop));
+        let task = tokio::spawn(run(listener, services.clone(), stop));
 
         Ok(Self {
             addr,
-            targets,
+            services,
             shutdown: Some(shutdown),
             task,
         })
@@ -49,8 +49,12 @@ impl ProxyServer {
         self.addr
     }
 
-    pub fn targets(&self) -> SharedTargets {
-        self.targets.clone()
+    pub fn services(&self) -> ServiceRoutes {
+        self.services.clone()
+    }
+
+    pub fn targets(&self) -> ServiceRoutes {
+        self.services()
     }
 
     pub async fn shutdown(mut self) -> Result<(), ProxyError> {
@@ -62,13 +66,13 @@ impl ProxyServer {
     }
 }
 
-async fn run(listener: TcpListener, targets: SharedTargets, mut stop: oneshot::Receiver<()>) {
+async fn run(listener: TcpListener, services: ServiceRoutes, mut stop: oneshot::Receiver<()>) {
     loop {
         tokio::select! {
             _ = &mut stop => break,
             accepted = listener.accept() => {
                 let Ok((client, _)) = accepted else { continue };
-                tokio::spawn(handle_client(client, targets.clone()));
+                tokio::spawn(handle_client(client, services.clone()));
             }
         }
     }

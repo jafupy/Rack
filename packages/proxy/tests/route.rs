@@ -1,47 +1,34 @@
-use rack_proxy::{route_host, HostRoute, RouteError};
+use rack_proxy::{is_hooks_host, origin_from_host};
 
 #[test]
-fn routes_service_localhost_hosts() {
+fn extracts_service_origins_from_localhost_hosts() {
+    assert_eq!(origin_from_host("jaf.localhost"), Some("jaf".to_string()));
+}
+
+#[test]
+fn extracts_origins_case_insensitively_and_strips_ports() {
     assert_eq!(
-        route_host("jaf.localhost").unwrap(),
-        HostRoute::Service {
-            host: "jaf".to_string()
-        }
+        origin_from_host("API.localhost:8080"),
+        Some("api".to_string())
     );
 }
 
 #[test]
-fn routes_service_hosts_case_insensitively_and_strips_ports() {
-    assert_eq!(
-        route_host("API.localhost:8080").unwrap(),
-        HostRoute::Service {
-            host: "api".to_string()
-        }
-    );
-}
-
-#[test]
-fn routes_rack_local_to_control_surface() {
-    assert_eq!(route_host("rack.local").unwrap(), HostRoute::RackLocal);
+fn identifies_hooks_host() {
+    assert!(is_hooks_host("rack.local"));
 }
 
 #[test]
 fn rejects_empty_hosts() {
-    assert_eq!(route_host("  "), Err(RouteError::MissingHost));
+    assert_eq!(origin_from_host("  "), None);
 }
 
 #[test]
 fn rejects_unknown_domains() {
-    assert_eq!(
-        route_host("example.com"),
-        Err(RouteError::UnsupportedHost("example.com".to_string()))
-    );
+    assert_eq!(origin_from_host("example.com"), None);
 }
 
 #[test]
 fn rejects_nested_localhost_hosts() {
-    assert_eq!(
-        route_host("api.dev.localhost"),
-        Err(RouteError::UnsupportedHost("api.dev.localhost".to_string()))
-    );
+    assert_eq!(origin_from_host("api.dev.localhost"), None);
 }
