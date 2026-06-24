@@ -1,10 +1,12 @@
 mod registry;
 mod router;
 
+use serde::{Deserialize, Serialize};
+
 pub use registry::{HookEndpoint, HookRegistry};
 pub use router::route;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HookRequest {
     pub method: String,
     pub path: String,
@@ -25,7 +27,7 @@ impl HookRequest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HookResponse {
     pub status: u16,
     pub headers: Vec<(String, String)>,
@@ -46,11 +48,16 @@ impl HookResponse {
 }
 
 pub fn dispatch(registry: &HookRegistry, request: &HookRequest) -> HookResponse {
-    match route(registry, request) {
-        Some(endpoint) => HookResponse::text(
+    let Some(endpoint) = route(registry, request) else {
+        return HookResponse::text(404, "hook not found\n");
+    };
+
+    match registry.run(&endpoint, request) {
+        Ok(response) => response,
+        Err(crate::RuntimeError::MissingModule) => HookResponse::text(
             501,
             format!("hook runtime is not wired yet: {}\n", endpoint.id),
         ),
-        None => HookResponse::text(404, "hook not found\n"),
+        Err(error) => HookResponse::text(500, format!("hook failed: {error}\n")),
     }
 }
