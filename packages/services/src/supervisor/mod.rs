@@ -1,4 +1,5 @@
 mod error;
+pub mod log;
 mod message;
 mod runtime;
 

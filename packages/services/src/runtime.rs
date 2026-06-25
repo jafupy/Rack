@@ -11,7 +11,7 @@ use crate::{
     hooks::{self, HookSummary},
     registry::{Registry, ServiceState, ServiceView},
     snapshot::{snapshot_service, Snapshot},
-    supervisor::Supervisor,
+    supervisor::{log::service_log_path, Supervisor},
 };
 
 pub struct RackRuntime {
@@ -107,6 +107,13 @@ impl RackRuntime {
 
     pub fn log(&self, id: &str) -> Result<String, String> {
         self.supervisor.log(id).map_err(|error| error.to_string())
+    }
+
+    pub fn log_path(&self, id: &str) -> Result<String, String> {
+        if !self.configs.contains_key(id) {
+            return Err(format!("unknown service: {id}"));
+        }
+        Ok(service_log_path(id).to_string_lossy().into_owned())
     }
 
     fn refresh_after_command(&self) -> Result<(), String> {

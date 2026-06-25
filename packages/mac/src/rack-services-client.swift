@@ -44,8 +44,14 @@ final class RackServicesClient: RackRuntimeClient {
     (try? id.withCString { try RackBridge.value(rackServicesLog($0)) }) ?? ""
   }
 
-  func logFilePath(for id: String) -> String? { nil }
-  func openInTerminal(id: String) {}
+  func logFilePath(for id: String) -> String? {
+    try? id.withCString { try RackBridge.value(rackServicesLogPath($0)) }
+  }
+
+  func openInTerminal(id: String) {
+    guard let path = logFilePath(for: id) else { return }
+    openLogInTerminal(path: path, id: id)
+  }
 
   func hooks() -> [HookSummary] {
     do {

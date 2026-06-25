@@ -9,7 +9,10 @@ use crate::{
     registry::Registry,
 };
 
-use super::{Message, SupervisorError};
+use super::{
+    log::{append_service_log, clear_service_log},
+    Message, SupervisorError,
+};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
 const MAX_LOG_LINES: usize = 400;
@@ -57,6 +60,7 @@ fn handle(
         }
         Message::Start { id, reply } => {
             logs.insert(id.clone(), String::new());
+            clear_service_log(&id);
             let _ = reply.send(start_service(registry, processes, &id));
         }
         Message::Stop { id, reply } => {
@@ -64,6 +68,7 @@ fn handle(
         }
         Message::Restart { id, reply } => {
             logs.insert(id.clone(), String::new());
+            clear_service_log(&id);
             let _ = reply.send(restart_service(registry, processes, &id));
         }
         Message::Shutdown => {}
@@ -165,6 +170,8 @@ fn append_output(logs: &mut HashMap<String, String>, id: &str, output: Vec<Strin
     if output.is_empty() {
         return;
     }
+
+    append_service_log(id, &output);
 
     let log = logs.entry(id.to_string()).or_default();
     for chunk in output {

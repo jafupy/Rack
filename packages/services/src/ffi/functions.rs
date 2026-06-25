@@ -87,6 +87,14 @@ pub extern "C" fn rack_services_log(id: *const c_char) -> *mut c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn rack_services_log_path(id: *const c_char) -> *mut c_char {
+    string_result(|| {
+        let id = unsafe { c_string(id) }?;
+        with_runtime(|runtime| runtime.log_path(&id))
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn rack_services_shutdown() -> RackServicesStatus {
     status(|| {
         *RUNTIME.lock().map_err(|error| error.to_string())? = None;
