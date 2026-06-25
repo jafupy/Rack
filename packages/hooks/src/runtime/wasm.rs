@@ -68,6 +68,15 @@ impl HookRuntime {
     }
 }
 
+pub fn run_cron_wasm(wasm: &[u8], entry: &str) -> Result<(), RuntimeError> {
+    let engine = Engine::default();
+    let module = Module::from_binary(&engine, wasm)?;
+    let mut store = Store::new(&engine, ());
+    let instance = Instance::new(&mut store, &module, &[])?;
+    let entry = instance.get_typed_func::<(), ()>(&mut store, entry)?;
+    entry.call(&mut store, ()).map_err(RuntimeError::from)
+}
+
 struct WasmModule {
     module: Module,
     entry: String,

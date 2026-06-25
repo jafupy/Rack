@@ -39,6 +39,16 @@ fn reads_ndjson_hook_metadata_from_wasm_custom_section() {
 }
 
 #[test]
+fn executes_wasm_cron_hook() {
+    rack_hooks::run_cron_wasm(&cron_wasm(), "tick").unwrap();
+}
+
+#[test]
+fn errors_for_missing_wasm_cron_export() {
+    assert!(rack_hooks::run_cron_wasm(&cron_wasm(), "missing").is_err());
+}
+
+#[test]
 fn executes_registered_wasm_hook() {
     let registry = HookRegistry::default();
     registry.register_wasm(&test_wasm()).unwrap();
@@ -86,6 +96,10 @@ fn test_wasm() -> Vec<u8> {
         wat::parse_str(wat).unwrap(),
         br#"{"hooks":[{"id":"hello","method":"GET","path":"/hello","entry":"hello"}]}"#,
     )
+}
+
+fn cron_wasm() -> Vec<u8> {
+    wat::parse_str(r#"(module (func (export "tick")))"#).unwrap()
 }
 
 fn test_module() -> Vec<u8> {

@@ -8,7 +8,7 @@ use rack_proxy::{ProxyServer, ServiceTarget, TargetTable};
 
 use crate::{
     control::ControlServer,
-    hooks::{self, HookSummary},
+    hooks::{self, HookScheduler, HookSummary},
     registry::{Registry, ServiceState, ServiceView},
     snapshot::{snapshot_service, Snapshot},
     supervisor::{log::service_log_path, Supervisor},
@@ -21,6 +21,7 @@ pub struct RackRuntime {
     proxy: Option<ProxyServer>,
     control: Option<ControlServer>,
     hooks: Vec<HookSummary>,
+    hook_scheduler: Option<HookScheduler>,
 }
 
 impl RackRuntime {
@@ -46,7 +47,8 @@ impl RackRuntime {
 
         let proxy_runtime = tokio::runtime::Runtime::new().map_err(|error| error.to_string())?;
         let proxy = bind_proxy(&proxy_runtime).map_err(|error| error.to_string())?;
-        let hooks = hooks::load_deployed(&proxy.hooks());
+        let deployed_hooks = hooks::load_deployed(&proxy.hooks());
+        let hook_scheduler = Some(HookScheduler::start(deployed_hooks.crons));
         let control = ControlServer::start(
             supervisor.clone(),
             configs.clone(),
@@ -60,7 +62,8 @@ impl RackRuntime {
             proxy_runtime,
             proxy: Some(proxy),
             control: Some(control),
-            hooks,
+            hooks: deployed_hooks.summaries,
+            hook_scheduler,
         })
     }
 
@@ -132,6 +135,7 @@ impl RackRuntime {
 
 impl Drop for RackRuntime {
     fn drop(&mut self) {
+        self.hook_scheduler.take();
         self.control.take();
         if let Some(proxy) = self.proxy.take() {
             let _ = self.proxy_runtime.block_on(proxy.shutdown());
