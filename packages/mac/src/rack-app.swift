@@ -9,6 +9,9 @@ struct RackApp: App {
     MenuBarExtra("Rack", systemImage: "server.rack") {
       MenuBarContentView()
         .environmentObject(model)
+        .task {
+          RackIntentBridge.model = model
+        }
     }
     .menuBarExtraStyle(.window)
   }
