@@ -41,6 +41,11 @@ app: swift
 	$(PLISTBUDDY) -c 'Add :LSMinimumSystemVersion string 14.0' $(PLIST)
 	$(PLISTBUDDY) -c 'Add :LSUIElement bool true' $(PLIST)
 	$(PLISTBUDDY) -c 'Add :NSPrincipalClass string NSApplication' $(PLIST)
+	$(PLISTBUDDY) -c 'Add :CFBundleURLTypes array' $(PLIST)
+	$(PLISTBUDDY) -c 'Add :CFBundleURLTypes:0 dict' $(PLIST)
+	$(PLISTBUDDY) -c 'Add :CFBundleURLTypes:0:CFBundleURLName string $(BUNDLE_ID)' $(PLIST)
+	$(PLISTBUDDY) -c 'Add :CFBundleURLTypes:0:CFBundleURLSchemes array' $(PLIST)
+	$(PLISTBUDDY) -c 'Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string rack' $(PLIST)
 	plutil -lint $(PLIST)
 	codesign --force --sign - $(APP)
 

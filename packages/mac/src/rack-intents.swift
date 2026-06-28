@@ -121,6 +121,25 @@ struct StopRackServiceIntent: AppIntent {
   }
 }
 
+struct RestartRackServiceIntent: AppIntent {
+  static let title: LocalizedStringResource = "Restart Rack Service"
+  static let description = IntentDescription("Restart one configured Rack service.")
+  static let openAppWhenRun = true
+
+  @Parameter(title: "Service")
+  var service: RackServiceEntity
+
+  @MainActor
+  func perform() async throws -> some IntentResult & ProvidesDialog {
+    guard let model = RackIntentBridge.model else { throw RackIntentError.appUnavailable }
+    guard try RackIntentBridge.service(id: service.id) != nil else {
+      throw RackIntentError.serviceNotFound
+    }
+    model.restart(id: service.id)
+    return .result(dialog: "Restarting \(service.name)")
+  }
+}
+
 struct StopAllRackServicesIntent: AppIntent {
   static let title: LocalizedStringResource = "Stop All Rack Services"
   static let description = IntentDescription("Stop every active Rack service.")
@@ -186,6 +205,12 @@ struct RackShortcuts: AppShortcutsProvider {
       phrases: ["Stop \(\.$service) in \(.applicationName)"],
       shortTitle: "Stop Service",
       systemImageName: "stop.fill"
+    )
+    AppShortcut(
+      intent: RestartRackServiceIntent(),
+      phrases: ["Restart \(\.$service) in \(.applicationName)"],
+      shortTitle: "Restart Service",
+      systemImageName: "arrow.clockwise"
     )
     AppShortcut(
       intent: StopAllRackServicesIntent(),

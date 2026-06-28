@@ -36,6 +36,10 @@ final class RackServicesClient: RackRuntimeClient {
     try id.withCString { try RackBridge.check(rackServicesStopService($0)) }
   }
 
+  func restartService(id: String) throws {
+    try id.withCString { try RackBridge.check(rackServicesRestartService($0)) }
+  }
+
   func shutdown() {
     RackBridge.discard(rackServicesShutdown())
   }

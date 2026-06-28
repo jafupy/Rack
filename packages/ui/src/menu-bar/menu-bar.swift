@@ -5,9 +5,9 @@ public struct MenuBarContentView: View {
   @EnvironmentObject private var model: RackViewModel
   @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
   @State private var hooksExpanded = false
-  var openSettings: (() -> Void)?
+  var openSettings: ((SettingsSection) -> Void)?
 
-  public init(openSettings: (() -> Void)? = nil) {
+  public init(openSettings: ((SettingsSection) -> Void)? = nil) {
     self.openSettings = openSettings
   }
 
@@ -70,7 +70,7 @@ public struct MenuBarContentView: View {
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(.secondary)
         Button {
-          showSettings()
+          showSettings(.services)
         } label: {
           Text("Add a Service")
         }
@@ -105,7 +105,7 @@ public struct MenuBarContentView: View {
   private var footer: some View {
     HStack {
       Button {
-        showSettings()
+        showSettings(.general)
       } label: {
         Image(systemName: "gear")
       }
@@ -147,9 +147,9 @@ public struct MenuBarContentView: View {
     .padding(.vertical, 8)
   }
 
-  private func showSettings() {
+  private func showSettings(_ section: SettingsSection) {
     if let openSettings {
-      openSettings()
+      openSettings(section)
     }
   }
 }

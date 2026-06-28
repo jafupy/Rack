@@ -85,6 +85,9 @@ func rackServicesStartService(_ id: UnsafePointer<CChar>) -> RackServicesStatus
 @_silgen_name("rack_services_stop_service")
 func rackServicesStopService(_ id: UnsafePointer<CChar>) -> RackServicesStatus
 
+@_silgen_name("rack_services_restart_service")
+func rackServicesRestartService(_ id: UnsafePointer<CChar>) -> RackServicesStatus
+
 @_silgen_name("rack_services_log")
 func rackServicesLog(_ id: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
 

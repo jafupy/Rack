@@ -3,15 +3,14 @@ import SwiftUI
 
 @main
 struct RackApp: App {
-  @StateObject private var model = RackViewModel(runtime: RackServicesClient())
+  @NSApplicationDelegateAdaptor(RackAppDelegate.self) private var appDelegate
 
   var body: some Scene {
     MenuBarExtra("Rack", systemImage: "server.rack") {
-      MenuBarContentView()
-        .environmentObject(model)
-        .task {
-          RackIntentBridge.model = model
-        }
+      MenuBarContentView { section in
+        appDelegate.openSettings(section: section)
+      }
+      .environmentObject(appDelegate.model)
     }
     .menuBarExtraStyle(.window)
   }
