@@ -9,4 +9,5 @@ repository.workspace = true
 anyhow.workspace = true
 clap = { version = "4", features = ["derive"] }
 rack-core = { path = "../core" }
+rack-hooks = { path = "../hooks" }
 rack-services = { path = "../services" }

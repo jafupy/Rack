@@ -30,6 +30,40 @@ public struct ServiceConfiguration: Identifiable, Equatable {
   }
 }
 
+public struct ServiceDefinition: Codable, Equatable {
+  public let id: String
+  public let name: String
+  public let host: String
+  public let run: String
+  public let workingDir: String
+  public let autoStart: Bool
+
+  public init(
+    id: String,
+    name: String,
+    host: String,
+    run: String,
+    workingDir: String,
+    autoStart: Bool
+  ) {
+    self.id = id
+    self.name = name
+    self.host = host
+    self.run = run
+    self.workingDir = workingDir
+    self.autoStart = autoStart
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case id
+    case name
+    case host
+    case run
+    case workingDir = "working_dir"
+    case autoStart = "auto_start"
+  }
+}
+
 public enum ServiceStatus: Equatable {
   case stopped
   case starting
@@ -37,7 +71,7 @@ public enum ServiceStatus: Equatable {
   case failed
 
   public var isRunning: Bool { self == .running }
-  public var isActive: Bool { self == .starting || self == .running }
+  public var isActive: Bool { self == .starting || self == .running || self == .failed }
 }
 
 public enum RackProxy {

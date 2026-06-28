@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     process::{Process, ProcessError},
-    registry::Registry,
+    registry::{Registry, ServiceState},
 };
 
 use super::{
@@ -15,7 +15,10 @@ use super::{
 };
 
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
+const READINESS_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_LOG_LINES: usize = 400;
+const READINESS_TIMEOUT_REASON: &str =
+    "readiness timeout: service did not open a listening port within 30 seconds";
 
 pub(super) fn run(mut registry: Registry, commands: Receiver<Message>) {
     let mut processes = HashMap::new();
@@ -45,6 +48,12 @@ fn handle(
     match command {
         Message::Register { config, reply } => {
             let _ = reply.send(registry.register(config).map_err(Into::into));
+        }
+        Message::Update { config, reply } => {
+            let _ = reply.send(registry.update(config).map_err(Into::into));
+        }
+        Message::Unregister { id, reply } => {
+            let _ = reply.send(unregister_service(registry, processes, logs, &id));
         }
         Message::List { reply } => {
             let _ = reply.send(Ok(registry.list()));
@@ -129,6 +138,20 @@ fn stop_service(
     Ok(())
 }
 
+fn unregister_service(
+    registry: &mut Registry,
+    processes: &mut HashMap<String, Process>,
+    logs: &mut HashMap<String, String>,
+    id: &str,
+) -> Result<rack_core::config::Service, SupervisorError> {
+    if !matches!(registry.status(id)?, crate::registry::ServiceState::Stopped) {
+        stop_service(registry, processes, id)?;
+    }
+
+    logs.remove(id);
+    registry.unregister(id).map_err(Into::into)
+}
+
 fn collect_output(processes: &mut HashMap<String, Process>, logs: &mut HashMap<String, String>) {
     for (id, process) in processes {
         append_output(logs, id, process.drain_output());
@@ -142,13 +165,8 @@ fn reap_exited(
 ) {
     processes.retain(|id, process| match process.has_exited() {
         Ok(false) => {
-            match process.ports(id) {
-                Ok(ports) => {
-                    if let Err(error) = update_ports(registry, id, process, ports) {
-                        eprintln!("failed to update service ports for {id}: {error}");
-                    }
-                }
-                Err(error) => eprintln!("failed to inspect service ports for {id}: {error}"),
+            if let Err(error) = update_running_state(registry, id, process) {
+                eprintln!("failed to update service state for {id}: {error}");
             }
             true
         }
@@ -188,24 +206,33 @@ fn append_output(logs: &mut HashMap<String, String>, id: &str, output: Vec<Strin
     }
 }
 
-fn update_ports(
+fn update_running_state(
     registry: &mut Registry,
     id: &str,
     process: &Process,
-    ports: Vec<u16>,
 ) -> Result<(), SupervisorError> {
-    if ports.is_empty() {
-        return Ok(());
-    }
-
     match registry.status(id)? {
-        crate::registry::ServiceState::Starting { .. } => {
-            registry.mark_running(id, process.pid(), process.pgid(), ports)?;
+        ServiceState::Starting { .. } => {
+            let ports = process.ports(id)?;
+            if !ports.is_empty() {
+                registry.mark_running(id, process.pid(), process.pgid(), ports)?;
+            } else if process.readiness_timed_out(READINESS_TIMEOUT) {
+                registry.mark_failed(
+                    id,
+                    process.pid(),
+                    process.pgid(),
+                    READINESS_TIMEOUT_REASON,
+                )?;
+            }
         }
-        crate::registry::ServiceState::Running { .. } => {
-            registry.update_ports(id, ports)?;
+        ServiceState::Running { .. } => {
+            let ports = process.ports(id)?;
+            if !ports.is_empty() {
+                registry.update_ports(id, ports)?;
+            }
         }
-        crate::registry::ServiceState::Stopped => {
+        ServiceState::Failed { .. } => {}
+        ServiceState::Stopped => {
             return Err(ProcessError::RegistryDesync(id.to_string()).into());
         }
     }

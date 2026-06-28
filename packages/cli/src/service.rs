@@ -120,7 +120,11 @@ fn log(id: &str) -> Result<()> {
 
 fn control_request(command: ControlCommand, id: Option<String>) -> Result<Response> {
     Client::connect_default()
-        .request(Request { command, id })
+        .request(Request {
+            command,
+            id,
+            service: None,
+        })
         .map_err(|error| anyhow::anyhow!(error))
 }
 
@@ -191,5 +195,6 @@ fn state_label(state: &StateSnapshot) -> &'static str {
         StateSnapshot::Stopped => "stopped",
         StateSnapshot::Starting { .. } => "starting",
         StateSnapshot::Running { .. } => "running",
+        StateSnapshot::Failed { .. } => "failed",
     }
 }

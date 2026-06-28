@@ -15,21 +15,26 @@ impl Registry {
     }
 
     pub fn register(&mut self, config: ServiceConfig) -> Result<(), RegistryError> {
-        if self.services.contains_key(&config.id) {
-            return Err(RegistryError::AlreadyRegistered(config.id));
-        }
-
-        if self
-            .services
-            .values()
-            .any(|service| service.config.host == config.host)
-        {
-            return Err(RegistryError::HostAlreadyRegistered(config.host));
-        }
-
+        self.ensure_can_insert(&config)?;
         self.services
             .insert(config.id.clone(), Service::new(config));
         Ok(())
+    }
+
+    pub fn update(&mut self, config: ServiceConfig) -> Result<(), RegistryError> {
+        self.ensure_exists(&config.id)?;
+        self.ensure_host_available(&config.id, &config.host)?;
+
+        let service = self.service_mut(&config.id)?;
+        service.config = config;
+        Ok(())
+    }
+
+    pub fn unregister(&mut self, id: &str) -> Result<ServiceConfig, RegistryError> {
+        self.services
+            .remove(id)
+            .map(|service| service.config)
+            .ok_or_else(|| RegistryError::UnknownService(id.to_string()))
     }
 
     pub fn resolve(&self, id: &str) -> Option<&Service> {
@@ -80,6 +85,22 @@ impl Registry {
         Ok(())
     }
 
+    pub fn mark_failed(
+        &mut self,
+        id: &str,
+        pid: i32,
+        pgid: i32,
+        reason: impl Into<String>,
+    ) -> Result<(), RegistryError> {
+        let service = self.service_mut(id)?;
+        service.state = ServiceState::Failed {
+            pid,
+            pgid,
+            reason: reason.into(),
+        };
+        Ok(())
+    }
+
     pub fn mark_stopped(&mut self, id: &str) -> Result<(), RegistryError> {
         let service = self.service_mut(id)?;
         service.state = ServiceState::Stopped;
@@ -98,9 +119,39 @@ impl Registry {
 
     pub fn require_started(&self, id: &str) -> Result<(), RegistryError> {
         match self.status(id)? {
-            ServiceState::Starting { .. } | ServiceState::Running { .. } => Ok(()),
+            ServiceState::Starting { .. }
+            | ServiceState::Running { .. }
+            | ServiceState::Failed { .. } => Ok(()),
             ServiceState::Stopped => Err(RegistryError::AlreadyStopped(id.to_string())),
         }
+    }
+
+    fn ensure_can_insert(&self, config: &ServiceConfig) -> Result<(), RegistryError> {
+        if self.services.contains_key(&config.id) {
+            return Err(RegistryError::AlreadyRegistered(config.id.clone()));
+        }
+
+        self.ensure_host_available(&config.id, &config.host)
+    }
+
+    fn ensure_exists(&self, id: &str) -> Result<(), RegistryError> {
+        if self.services.contains_key(id) {
+            Ok(())
+        } else {
+            Err(RegistryError::UnknownService(id.to_string()))
+        }
+    }
+
+    fn ensure_host_available(&self, id: &str, host: &str) -> Result<(), RegistryError> {
+        if self
+            .services
+            .values()
+            .any(|service| service.config.id != id && service.config.host == host)
+        {
+            return Err(RegistryError::HostAlreadyRegistered(host.to_string()));
+        }
+
+        Ok(())
     }
 
     fn service(&self, id: &str) -> Result<&Service, RegistryError> {

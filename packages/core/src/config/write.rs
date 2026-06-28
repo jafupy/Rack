@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use super::{
     backfill::{cache_config, config_path, format_config, BackfillError},
-    validate_config, Config, ValidationErrors,
+    validate_config, Config, Service, ValidationErrors,
 };
 
 #[derive(Debug, Error)]
@@ -27,8 +27,81 @@ pub enum WriteError {
     #[error("failed to write config at `{path}`: {source}")]
     WriteConfig { path: PathBuf, source: io::Error },
 
+    #[error("service `{0}` already exists")]
+    ServiceAlreadyExists(String),
+
+    #[error("unknown service `{0}`")]
+    ServiceNotFound(String),
+
+    #[error("edited service id `{service_id}` does not match target id `{target_id}`")]
+    ServiceIdMismatch {
+        target_id: String,
+        service_id: String,
+    },
+
     #[error("failed to cache config after write: {0}")]
     Cache(#[source] BackfillError),
+}
+
+pub fn add_service(config: &mut Config, service: Service) -> Result<(), WriteError> {
+    if config
+        .services
+        .iter()
+        .any(|current| current.id == service.id)
+    {
+        return Err(WriteError::ServiceAlreadyExists(service.id));
+    }
+
+    config.services.push(service);
+    if let Err(error) = validate_config(config) {
+        config.services.pop();
+        return Err(error.into());
+    }
+
+    Ok(())
+}
+
+pub fn replace_service(
+    config: &mut Config,
+    target_id: &str,
+    service: Service,
+) -> Result<(), WriteError> {
+    if service.id != target_id {
+        return Err(WriteError::ServiceIdMismatch {
+            target_id: target_id.to_string(),
+            service_id: service.id,
+        });
+    }
+
+    let Some(index) = config
+        .services
+        .iter()
+        .position(|current| current.id == target_id)
+    else {
+        return Err(WriteError::ServiceNotFound(target_id.to_string()));
+    };
+
+    let previous = std::mem::replace(&mut config.services[index], service);
+    if let Err(error) = validate_config(config) {
+        config.services[index] = previous;
+        return Err(error.into());
+    }
+
+    Ok(())
+}
+
+pub fn remove_service(config: &mut Config, id: &str) -> Result<Service, WriteError> {
+    let Some(index) = config.services.iter().position(|service| service.id == id) else {
+        return Err(WriteError::ServiceNotFound(id.to_string()));
+    };
+
+    let removed = config.services.remove(index);
+    if let Err(error) = validate_config(config) {
+        config.services.insert(index, removed.clone());
+        return Err(error.into());
+    }
+
+    Ok(removed)
 }
 
 pub fn save(config: &Config) -> Result<PathBuf, WriteError> {

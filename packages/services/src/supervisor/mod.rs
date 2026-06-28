@@ -44,6 +44,17 @@ impl Supervisor {
         self.request(|reply| Message::Register { config, reply })
     }
 
+    pub fn update(&self, config: ServiceConfig) -> Result<(), SupervisorError> {
+        self.request(|reply| Message::Update { config, reply })
+    }
+
+    pub fn unregister(&self, id: impl Into<String>) -> Result<ServiceConfig, SupervisorError> {
+        self.request(|reply| Message::Unregister {
+            id: id.into(),
+            reply,
+        })
+    }
+
     pub fn list(&self) -> Result<Vec<ServiceView>, SupervisorError> {
         self.request(|reply| Message::List { reply })
     }

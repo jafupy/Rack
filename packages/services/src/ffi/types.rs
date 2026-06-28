@@ -10,6 +10,7 @@ pub enum RackServicesStateKind {
     Stopped = 0,
     Starting = 1,
     Running = 2,
+    Failed = 3,
 }
 
 #[repr(C)]
@@ -126,6 +127,9 @@ fn state_parts(state: StateSnapshot) -> (RackServicesStateKind, i32, i32, Vec<u1
         }
         StateSnapshot::Running { pid, pgid, ports } => {
             (RackServicesStateKind::Running, pid, pgid, ports)
+        }
+        StateSnapshot::Failed { pid, pgid, .. } => {
+            (RackServicesStateKind::Failed, pid, pgid, Vec::new())
         }
     }
 }

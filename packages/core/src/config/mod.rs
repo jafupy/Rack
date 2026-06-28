@@ -11,7 +11,7 @@ pub use backfill::{
 pub use parse::{parse_full_config, ParseError};
 use serde::{Deserialize, Serialize};
 pub use validate::{validate_config, ValidationError, ValidationErrors};
-pub use write::{save, save_at, WriteError};
+pub use write::{add_service, remove_service, replace_service, save, save_at, WriteError};
 
 pub const SUPPORTED_SCHEMA_VERSION: u8 = 1;
 

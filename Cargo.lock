@@ -1801,6 +1801,7 @@ dependencies = [
  "anyhow",
  "clap",
  "rack-core",
+ "rack-hooks",
  "rack-services",
 ]
 

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use rack_core::config::Service as ServiceConfig;
+
 use crate::snapshot::Snapshot;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -10,12 +12,18 @@ pub enum Command {
     Stop,
     Restart,
     Log,
+    Add,
+    Edit,
+    Remove,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Request {
     pub command: Command,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service: Option<ServiceConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

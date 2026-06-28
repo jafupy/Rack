@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     fs,
     io::{BufRead, BufReader},
     os::unix::net::{UnixListener, UnixStream},
@@ -12,12 +11,12 @@ use std::{
     time::Duration,
 };
 
-use rack_core::config::Service as ServiceConfig;
 use rack_proxy::{ServiceTarget, SharedTargets, TargetTable};
 
 use super::{write_json_line, Command, Request, Response};
 use crate::{
     registry::{ServiceState, ServiceView},
+    runtime::SharedServiceConfigs,
     snapshot::{snapshot_service, Snapshot},
     supervisor::Supervisor,
 };
@@ -31,7 +30,7 @@ pub struct ControlServer {
 impl ControlServer {
     pub fn start(
         supervisor: Supervisor,
-        configs: HashMap<String, ServiceConfig>,
+        configs: SharedServiceConfigs,
         proxy_port: u16,
         targets: SharedTargets,
     ) -> Result<Self, String> {
@@ -91,7 +90,7 @@ fn bind_listener(path: &Path) -> Result<UnixListener, String> {
 fn run(
     listener: UnixListener,
     supervisor: Supervisor,
-    configs: HashMap<String, ServiceConfig>,
+    configs: SharedServiceConfigs,
     proxy_port: u16,
     targets: SharedTargets,
     running: Arc<AtomicBool>,
@@ -110,7 +109,7 @@ fn run(
 fn handle_client(
     mut stream: UnixStream,
     supervisor: &Supervisor,
-    configs: &HashMap<String, ServiceConfig>,
+    configs: &SharedServiceConfigs,
     proxy_port: u16,
     targets: &SharedTargets,
 ) {
@@ -134,7 +133,7 @@ fn read_request(stream: &UnixStream) -> Result<Request, String> {
 fn handle_request(
     request: Request,
     supervisor: &Supervisor,
-    configs: &HashMap<String, ServiceConfig>,
+    configs: &SharedServiceConfigs,
     proxy_port: u16,
     targets: &SharedTargets,
 ) -> Result<Response, String> {
@@ -152,6 +151,49 @@ fn handle_request(
             supervisor.restart_service(id)
         })
         .and_then(|_| snapshot_response(supervisor, configs, proxy_port, targets)),
+        Command::Add => {
+            let service = request
+                .service
+                .ok_or_else(|| "missing service config".to_string())?;
+            mutate_config(|config| rack_core::config::add_service(config, service.clone()))?;
+            supervisor
+                .register(service.clone())
+                .map_err(|error| error.to_string())?;
+            configs
+                .write()
+                .map_err(|error| error.to_string())?
+                .insert(service.id.clone(), service);
+            snapshot_response(supervisor, configs, proxy_port, targets)
+        }
+        Command::Edit => {
+            let id = request.id.ok_or_else(|| "missing service id".to_string())?;
+            let service = request
+                .service
+                .ok_or_else(|| "missing service config".to_string())?;
+            mutate_config(|config| {
+                rack_core::config::replace_service(config, &id, service.clone())
+            })?;
+            supervisor
+                .update(service.clone())
+                .map_err(|error| error.to_string())?;
+            configs
+                .write()
+                .map_err(|error| error.to_string())?
+                .insert(service.id.clone(), service);
+            snapshot_response(supervisor, configs, proxy_port, targets)
+        }
+        Command::Remove => {
+            let id = request.id.ok_or_else(|| "missing service id".to_string())?;
+            mutate_config(|config| rack_core::config::remove_service(config, &id).map(|_| ()))?;
+            supervisor
+                .unregister(&id)
+                .map_err(|error| error.to_string())?;
+            configs
+                .write()
+                .map_err(|error| error.to_string())?
+                .remove(&id);
+            snapshot_response(supervisor, configs, proxy_port, targets)
+        }
         Command::Log => {
             let id = request.id.ok_or_else(|| "missing service id".to_string())?;
             let log = supervisor.log(id).map_err(|error| error.to_string())?;
@@ -165,6 +207,15 @@ fn handle_request(
     }
 }
 
+fn mutate_config(
+    mutate: impl FnOnce(&mut rack_core::config::Config) -> Result<(), rack_core::config::WriteError>,
+) -> Result<(), String> {
+    let mut config = rack_core::config::load().map_err(|error| error.to_string())?;
+    mutate(&mut config).map_err(|error| error.to_string())?;
+    rack_core::config::save(&config).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 fn run_service_command(
     id: Option<String>,
     supervisor: &Supervisor,
@@ -176,19 +227,20 @@ fn run_service_command(
 
 fn snapshot_response(
     supervisor: &Supervisor,
-    configs: &HashMap<String, ServiceConfig>,
+    configs: &SharedServiceConfigs,
     proxy_port: u16,
     targets: &SharedTargets,
 ) -> Result<Response, String> {
     let views = supervisor.list().map_err(|error| error.to_string())?;
     refresh_targets(targets, &views);
+    let configs = configs.read().map_err(|error| error.to_string())?;
     Ok(Response {
         ok: true,
         snapshot: Some(Snapshot {
             proxy_port: Some(proxy_port),
             services: views
                 .into_iter()
-                .map(|view| snapshot_service(view, configs))
+                .map(|view| snapshot_service(view, &configs))
                 .collect(),
         }),
         log: None,

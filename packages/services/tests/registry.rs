@@ -30,6 +30,39 @@ fn rejects_duplicate_hosts() {
 }
 
 #[test]
+fn updates_registered_service_config_preserving_state() {
+    let mut registry = registered();
+    registry.mark_spawned("api", 10, 10).unwrap();
+
+    registry
+        .update(ServiceConfig {
+            name: "Renamed API".to_string(),
+            host: "api-v2".to_string(),
+            run: "bun dev".to_string(),
+            ..service("api", "api-v2")
+        })
+        .unwrap();
+
+    let view = registry.list().pop().unwrap();
+    assert_eq!(view.name, "Renamed API");
+    assert_eq!(view.host, "api-v2");
+    assert_eq!(view.state, ServiceState::Starting { pid: 10, pgid: 10 });
+}
+
+#[test]
+fn unregisters_services() {
+    let mut registry = registered();
+
+    let removed = registry.unregister("api").unwrap();
+
+    assert_eq!(removed.id, "api");
+    assert!(matches!(
+        registry.status("api"),
+        Err(RegistryError::UnknownService(id)) if id == "api"
+    ));
+}
+
+#[test]
 fn transitions_from_stopped_to_starting_to_running() {
     let mut registry = registered();
 
@@ -52,7 +85,7 @@ fn transitions_from_stopped_to_starting_to_running() {
 }
 
 #[test]
-fn require_started_accepts_starting_and_running() {
+fn require_started_accepts_starting_running_and_failed() {
     let mut registry = registered();
 
     assert!(matches!(
@@ -65,6 +98,30 @@ fn require_started_accepts_starting_and_running() {
 
     registry.mark_running("api", 10, 10, vec![3000]).unwrap();
     assert!(registry.require_started("api").is_ok());
+
+    registry
+        .mark_failed("api", 10, 10, "readiness timeout")
+        .unwrap();
+    assert!(registry.require_started("api").is_ok());
+}
+
+#[test]
+fn records_readiness_failure_explicitly() {
+    let mut registry = registered();
+
+    registry.mark_spawned("api", 10, 10).unwrap();
+    registry
+        .mark_failed("api", 10, 10, "readiness timeout")
+        .unwrap();
+
+    assert_eq!(
+        registry.status("api").unwrap(),
+        ServiceState::Failed {
+            pid: 10,
+            pgid: 10,
+            reason: "readiness timeout".to_string()
+        }
+    );
 }
 
 #[test]
@@ -86,6 +143,19 @@ fn updates_ports_only_when_running() {
             pid: 10,
             pgid: 10,
             ports: vec![3001]
+        }
+    );
+
+    registry
+        .mark_failed("api", 10, 10, "readiness timeout")
+        .unwrap();
+    registry.update_ports("api", vec![3002]).unwrap();
+    assert_eq!(
+        registry.status("api").unwrap(),
+        ServiceState::Failed {
+            pid: 10,
+            pgid: 10,
+            reason: "readiness timeout".to_string()
         }
     );
 }

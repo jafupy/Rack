@@ -4,6 +4,7 @@ let RackServicesStatusOk: UInt32 = 0
 let RackServicesStateStopped: UInt32 = 0
 let RackServicesStateStarting: UInt32 = 1
 let RackServicesStateRunning: UInt32 = 2
+let RackServicesStateFailed: UInt32 = 3
 
 struct RackServicesStatus {
   let abiVersion: UInt32
@@ -87,6 +88,17 @@ func rackServicesStopService(_ id: UnsafePointer<CChar>) -> RackServicesStatus
 
 @_silgen_name("rack_services_restart_service")
 func rackServicesRestartService(_ id: UnsafePointer<CChar>) -> RackServicesStatus
+
+@_silgen_name("rack_services_add_service_json")
+func rackServicesAddServiceJson(_ serviceJson: UnsafePointer<CChar>) -> RackServicesStatus
+
+@_silgen_name("rack_services_edit_service_json")
+func rackServicesEditServiceJson(
+  _ id: UnsafePointer<CChar>, _ serviceJson: UnsafePointer<CChar>
+) -> RackServicesStatus
+
+@_silgen_name("rack_services_remove_service")
+func rackServicesRemoveService(_ id: UnsafePointer<CChar>) -> RackServicesStatus
 
 @_silgen_name("rack_services_log")
 func rackServicesLog(_ id: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?

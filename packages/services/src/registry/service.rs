@@ -12,6 +12,11 @@ pub enum ServiceState {
         pgid: i32,
         ports: Vec<u16>,
     },
+    Failed {
+        pid: i32,
+        pgid: i32,
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

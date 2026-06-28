@@ -13,6 +13,14 @@ pub(super) enum Message {
         config: ServiceConfig,
         reply: Reply<()>,
     },
+    Update {
+        config: ServiceConfig,
+        reply: Reply<()>,
+    },
+    Unregister {
+        id: String,
+        reply: Reply<ServiceConfig>,
+    },
     List {
         reply: Reply<Vec<ServiceView>>,
     },

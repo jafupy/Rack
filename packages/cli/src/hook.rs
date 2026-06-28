@@ -1,10 +1,12 @@
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::Command,
 };
 
 use anyhow::{bail, Context, Result};
+use rack_hooks::HookRegistry;
+use rack_services::hooks::HookSummary;
 
 pub fn init(path: &str) -> Result<()> {
     let path = Path::new(path);
@@ -35,6 +37,21 @@ pub fn build(path: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn list() -> Result<()> {
+    let summaries = rack_services::hooks::load_deployed(&HookRegistry::default()).summaries;
+
+    if summaries.is_empty() {
+        println!("No hooks deployed");
+        return Ok(());
+    }
+
+    for summary in summaries {
+        print_hook_summary(&summary);
+    }
+
+    Ok(())
+}
+
 pub fn deploy(path: &str) -> Result<()> {
     build(path)?;
 
@@ -57,9 +74,55 @@ pub fn deploy(path: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn remove(name: &str) -> Result<()> {
+    ensure_hook_name(name)?;
+    let destination = hooks_dir()?.join(name);
+
+    let metadata = fs::symlink_metadata(&destination)
+        .with_context(|| format!("deployed hook not found: {}", destination.display()))?;
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() || file_type.is_file() {
+        fs::remove_file(&destination)?;
+    } else if metadata.is_dir() {
+        fs::remove_dir_all(&destination)?;
+    } else {
+        bail!(
+            "deployed hook path is not removable: {}",
+            destination.display()
+        );
+    }
+
+    println!("Removed hook `{name}` from {}", hooks_dir()?.display());
+    Ok(())
+}
+
 fn hooks_dir() -> Result<PathBuf> {
     let home = std::env::var_os("HOME").ok_or_else(|| anyhow::anyhow!("HOME is not set"))?;
     Ok(PathBuf::from(home).join(".rack/hooks"))
+}
+
+fn ensure_hook_name(name: &str) -> Result<()> {
+    let mut components = Path::new(name).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => Ok(()),
+        _ => bail!("hook name must be a deployed hook directory name"),
+    }
+}
+
+fn print_hook_summary(summary: &HookSummary) {
+    println!("{}", summary.name);
+
+    for route in &summary.routes {
+        println!("  route\t{}\t{}", route.method, route.path);
+    }
+
+    for cron in &summary.crons {
+        println!("  cron\t{}\t{}", cron.schedule, cron.hook);
+    }
+
+    for error in &summary.errors {
+        println!("  error\t{error}");
+    }
 }
 
 fn cargo_toml(path: &Path) -> Result<String> {

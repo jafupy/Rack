@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::{Arc, RwLock},
 };
 
 use rack_core::config::{self, Service as ServiceConfig};
@@ -14,9 +15,11 @@ use crate::{
     supervisor::{log::service_log_path, Supervisor},
 };
 
+pub(crate) type SharedServiceConfigs = Arc<RwLock<HashMap<String, ServiceConfig>>>;
+
 pub struct RackRuntime {
     supervisor: Supervisor,
-    configs: HashMap<String, ServiceConfig>,
+    configs: SharedServiceConfigs,
     proxy_runtime: tokio::runtime::Runtime,
     proxy: Option<ProxyServer>,
     control: Option<ControlServer>,
@@ -49,6 +52,7 @@ impl RackRuntime {
         let proxy = bind_proxy(&proxy_runtime).map_err(|error| error.to_string())?;
         let deployed_hooks = hooks::load_deployed(&proxy.hooks());
         let hook_scheduler = Some(HookScheduler::start(deployed_hooks.crons));
+        let configs = Arc::new(RwLock::new(configs));
         let control = ControlServer::start(
             supervisor.clone(),
             configs.clone(),
@@ -78,11 +82,12 @@ impl RackRuntime {
     pub fn snapshot(&self) -> Result<Snapshot, String> {
         let views = self.supervisor.list().map_err(|error| error.to_string())?;
         self.refresh_proxy_targets(&views);
+        let configs = self.configs.read().map_err(|error| error.to_string())?;
         Ok(Snapshot {
             proxy_port: self.proxy.as_ref().map(|proxy| proxy.addr().port()),
             services: views
                 .into_iter()
-                .map(|view| snapshot_service(view, &self.configs))
+                .map(|view| snapshot_service(view, &configs))
                 .collect(),
         })
     }
@@ -113,10 +118,58 @@ impl RackRuntime {
     }
 
     pub fn log_path(&self, id: &str) -> Result<String, String> {
-        if !self.configs.contains_key(id) {
+        if !self
+            .configs
+            .read()
+            .map_err(|error| error.to_string())?
+            .contains_key(id)
+        {
             return Err(format!("unknown service: {id}"));
         }
         Ok(service_log_path(id).to_string_lossy().into_owned())
+    }
+
+    pub fn add_service(&mut self, service: ServiceConfig) -> Result<Snapshot, String> {
+        let mut config = config::load().map_err(|error| error.to_string())?;
+        config::add_service(&mut config, service.clone()).map_err(|error| error.to_string())?;
+        self.supervisor
+            .register(service.clone())
+            .map_err(|error| error.to_string())?;
+        config::save(&config).map_err(|error| error.to_string())?;
+        self.configs
+            .write()
+            .map_err(|error| error.to_string())?
+            .insert(service.id.clone(), service);
+        self.snapshot()
+    }
+
+    pub fn edit_service(&mut self, id: &str, service: ServiceConfig) -> Result<Snapshot, String> {
+        let mut config = config::load().map_err(|error| error.to_string())?;
+        config::replace_service(&mut config, id, service.clone())
+            .map_err(|error| error.to_string())?;
+        self.supervisor
+            .update(service.clone())
+            .map_err(|error| error.to_string())?;
+        config::save(&config).map_err(|error| error.to_string())?;
+        self.configs
+            .write()
+            .map_err(|error| error.to_string())?
+            .insert(service.id.clone(), service);
+        self.snapshot()
+    }
+
+    pub fn remove_service(&mut self, id: &str) -> Result<Snapshot, String> {
+        let mut config = config::load().map_err(|error| error.to_string())?;
+        config::remove_service(&mut config, id).map_err(|error| error.to_string())?;
+        self.supervisor
+            .unregister(id)
+            .map_err(|error| error.to_string())?;
+        config::save(&config).map_err(|error| error.to_string())?;
+        self.configs
+            .write()
+            .map_err(|error| error.to_string())?
+            .remove(id);
+        self.snapshot()
     }
 
     fn refresh_after_command(&self) -> Result<(), String> {

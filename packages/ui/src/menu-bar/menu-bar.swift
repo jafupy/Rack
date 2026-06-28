@@ -207,6 +207,7 @@ private struct ServiceMenuRow: View {
   private var status: ServiceStatus { model.status(for: service.id) }
   private var isRunning: Bool { status.isRunning }
   private var isStarting: Bool { status == .starting }
+  private var isActive: Bool { status.isActive }
   private var hasLog: Bool { model.logFilePath(for: service.id) != nil }
 
   private var commandLabel: String {
@@ -267,7 +268,7 @@ private struct ServiceMenuRow: View {
 
         // Play / stop button
         Button {
-          if isRunning || isStarting {
+          if isActive {
             model.stop(id: service.id)
           } else {
             model.start(id: service.id)
@@ -280,18 +281,18 @@ private struct ServiceMenuRow: View {
               .frame(width: 26, height: 26)
               .background(.orange.opacity(0.1), in: Circle())
           } else {
-            Image(systemName: isRunning ? "stop.fill" : "play.fill")
+            Image(systemName: isActive ? "stop.fill" : "play.fill")
               .font(.system(size: 10, weight: .semibold))
-              .foregroundStyle(isRunning ? Color.red : Color.green)
+              .foregroundStyle(isActive ? Color.red : Color.green)
               .frame(width: 26, height: 26)
               .background(
-                (isRunning ? Color.red : Color.green).opacity(0.1),
+                (isActive ? Color.red : Color.green).opacity(0.1),
                 in: Circle()
               )
           }
         }
         .buttonStyle(.plain)
-        .disabled(service.command.isEmpty && !isRunning && !isStarting)
+        .disabled(service.command.isEmpty && !isActive)
       }
       .padding(.horizontal, 14)
       .padding(.top, 10)

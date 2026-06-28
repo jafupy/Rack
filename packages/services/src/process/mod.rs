@@ -24,6 +24,7 @@ const PORT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 pub struct Process {
     child: Child,
     pgid: i32,
+    started_at: Instant,
     output: Receiver<String>,
     _output_threads: Vec<JoinHandle<()>>,
 }
@@ -57,6 +58,7 @@ impl Process {
 
         Ok(Self {
             pgid: child.id() as i32,
+            started_at: Instant::now(),
             child,
             output,
             _output_threads: output_threads,
@@ -87,6 +89,10 @@ impl Process {
 
     pub fn ports(&self, id: &str) -> Result<Vec<u16>, ProcessError> {
         listen_ports(id, self.pgid)
+    }
+
+    pub fn readiness_timed_out(&self, timeout: Duration) -> bool {
+        self.started_at.elapsed() >= timeout
     }
 
     pub fn wait_for_ports(&self, id: &str, timeout: Duration) -> Result<Vec<u16>, ProcessError> {

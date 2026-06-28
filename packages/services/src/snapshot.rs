@@ -35,6 +35,11 @@ pub enum StateSnapshot {
         pgid: i32,
         ports: Vec<u16>,
     },
+    Failed {
+        pid: i32,
+        pgid: i32,
+        reason: String,
+    },
 }
 
 pub fn snapshot_service(
@@ -60,5 +65,6 @@ fn snapshot_state(state: ServiceState) -> StateSnapshot {
         ServiceState::Stopped => StateSnapshot::Stopped,
         ServiceState::Starting { pid, pgid } => StateSnapshot::Starting { pid, pgid },
         ServiceState::Running { pid, pgid, ports } => StateSnapshot::Running { pid, pgid, ports },
+        ServiceState::Failed { pid, pgid, reason } => StateSnapshot::Failed { pid, pgid, reason },
     }
 }

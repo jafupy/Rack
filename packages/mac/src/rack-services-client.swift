@@ -40,6 +40,24 @@ final class RackServicesClient: RackRuntimeClient {
     try id.withCString { try RackBridge.check(rackServicesRestartService($0)) }
   }
 
+  func addService(_ service: ServiceDefinition) throws {
+    let json = try encodeService(service)
+    try json.withCString { try RackBridge.check(rackServicesAddServiceJson($0)) }
+  }
+
+  func editService(id: String, service: ServiceDefinition) throws {
+    let json = try encodeService(service)
+    try id.withCString { idPointer in
+      try json.withCString { servicePointer in
+        try RackBridge.check(rackServicesEditServiceJson(idPointer, servicePointer))
+      }
+    }
+  }
+
+  func removeService(id: String) throws {
+    try id.withCString { try RackBridge.check(rackServicesRemoveService($0)) }
+  }
+
   func shutdown() {
     RackBridge.discard(rackServicesShutdown())
   }
@@ -55,6 +73,14 @@ final class RackServicesClient: RackRuntimeClient {
   func openInTerminal(id: String) {
     guard let path = logFilePath(for: id) else { return }
     openLogInTerminal(path: path, id: id)
+  }
+
+  private func encodeService(_ service: ServiceDefinition) throws -> String {
+    let data = try JSONEncoder().encode(service)
+    guard let json = String(data: data, encoding: .utf8) else {
+      throw RackBridgeError.message("failed to encode service config")
+    }
+    return json
   }
 
   func hooks() -> [HookSummary] {
@@ -89,6 +115,7 @@ extension ServiceStatus {
     case RackServicesStateRunning: self = .running
     case RackServicesStateStarting: self = .starting
     case RackServicesStateStopped: self = .stopped
+    case RackServicesStateFailed: self = .failed
     default: self = .failed
     }
   }

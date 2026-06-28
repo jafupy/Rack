@@ -26,9 +26,21 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum HookCommand {
-    Init { path: String },
-    Build { path: Option<String> },
-    Deploy { path: Option<String> },
+    #[command(visible_alias = "ls")]
+    List,
+    Init {
+        path: String,
+    },
+    Build {
+        path: Option<String>,
+    },
+    Deploy {
+        path: Option<String>,
+    },
+    #[command(visible_alias = "rm")]
+    Remove {
+        name: String,
+    },
 }
 
 fn main() {
@@ -48,8 +60,10 @@ fn run() -> Result<()> {
 
 fn run_hook(command: HookCommand) -> Result<()> {
     match command {
+        HookCommand::List => hook::list(),
         HookCommand::Init { path } => hook::init(&path),
         HookCommand::Build { path } => hook::build(path.as_deref().unwrap_or(".")),
         HookCommand::Deploy { path } => hook::deploy(path.as_deref().unwrap_or(".")),
+        HookCommand::Remove { name } => hook::remove(&name),
     }
 }

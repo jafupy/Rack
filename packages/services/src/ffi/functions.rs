@@ -1,5 +1,7 @@
 use std::{ffi::CStr, os::raw::c_char};
 
+use rack_core::config::Service as ServiceConfig;
+
 use crate::{runtime::RackRuntime, RUNTIME};
 
 use super::{
@@ -79,6 +81,42 @@ pub extern "C" fn rack_services_restart_service(id: *const c_char) -> RackServic
 }
 
 #[no_mangle]
+pub extern "C" fn rack_services_add_service_json(
+    service_json: *const c_char,
+) -> RackServicesStatus {
+    status(|| {
+        let service =
+            unsafe { service_config(service_json) }.map_err(FfiError::invalid_argument)?;
+        with_runtime_mut(|runtime| runtime.add_service(service)).map_err(FfiError::runtime)?;
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn rack_services_edit_service_json(
+    id: *const c_char,
+    service_json: *const c_char,
+) -> RackServicesStatus {
+    status(|| {
+        let id = unsafe { c_string(id) }.map_err(FfiError::invalid_argument)?;
+        let service =
+            unsafe { service_config(service_json) }.map_err(FfiError::invalid_argument)?;
+        with_runtime_mut(|runtime| runtime.edit_service(&id, service))
+            .map_err(FfiError::runtime)?;
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn rack_services_remove_service(id: *const c_char) -> RackServicesStatus {
+    status(|| {
+        let id = unsafe { c_string(id) }.map_err(FfiError::invalid_argument)?;
+        with_runtime_mut(|runtime| runtime.remove_service(&id)).map_err(FfiError::runtime)?;
+        Ok(())
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn rack_services_log(id: *const c_char) -> *mut c_char {
     string_result(|| {
         let id = unsafe { c_string(id) }?;
@@ -141,6 +179,16 @@ fn with_runtime<T>(action: impl FnOnce(&RackRuntime) -> Result<T, String>) -> Re
     action(runtime)
 }
 
+fn with_runtime_mut<T>(
+    action: impl FnOnce(&mut RackRuntime) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut runtime = RUNTIME.lock().map_err(|error| error.to_string())?;
+    let runtime = runtime
+        .as_mut()
+        .ok_or_else(|| "rack services runtime has not been initialized".to_string())?;
+    action(runtime)
+}
+
 fn status(action: impl FnOnce() -> Result<(), FfiError>) -> RackServicesStatus {
     match action() {
         Ok(()) => RackServicesStatus::ok(),
@@ -153,6 +201,11 @@ fn string_result(action: impl FnOnce() -> Result<String, String>) -> *mut c_char
         Ok(value) => string_ptr(value),
         Err(error) => string_ptr(format!("ERROR:{error}")),
     }
+}
+
+unsafe fn service_config(value: *const c_char) -> Result<ServiceConfig, String> {
+    let json = c_string(value)?;
+    serde_json::from_str(&json).map_err(|error| error.to_string())
 }
 
 unsafe fn c_string(value: *const c_char) -> Result<String, String> {

@@ -56,6 +56,33 @@ public final class RackViewModel: ObservableObject {
     }
   }
 
+  public func addService(_ service: ServiceDefinition) {
+    do {
+      try runtime?.addService(service)
+      reloadServices()
+    } catch {
+      print("failed to add service \(service.id): \(error)")
+    }
+  }
+
+  public func editService(id: ServiceConfiguration.ID, service: ServiceDefinition) {
+    do {
+      try runtime?.editService(id: id, service: service)
+      reloadServices()
+    } catch {
+      print("failed to edit service \(id): \(error)")
+    }
+  }
+
+  public func removeService(id: ServiceConfiguration.ID) {
+    do {
+      try runtime?.removeService(id: id)
+      reloadServices()
+    } catch {
+      print("failed to remove service \(id): \(error)")
+    }
+  }
+
   public func stopAll() {
     for service in services where status(for: service.id).isActive {
       stop(id: service.id)
@@ -103,6 +130,9 @@ public protocol RackRuntimeClient: AnyObject {
   func startService(id: String) throws
   func stopService(id: String) throws
   func restartService(id: String) throws
+  func addService(_ service: ServiceDefinition) throws
+  func editService(id: String, service: ServiceDefinition) throws
+  func removeService(id: String) throws
 
   func shutdown()
   func log(for id: String) -> String
