@@ -1,927 +1,586 @@
-# TODO: Remaining parity with `main`
+# TODO
 
-This is the rewrite parity backlog. `main` is the functionality reference; `rewrite` should preserve product behaviour while keeping the new package boundaries from `PLAN.md`.
+Wall-of-bullets parity backlog for the Rack rewrite.
 
-Principles while working this list:
+Keep in mind:
 
-- Keep Rust as runtime truth.
-- Keep SwiftUI dumb: render state, call thin APIs.
-- Do not recreate old god objects.
-- Keep files small and responsibility-focused.
-- Put tests in sibling `tests/` folders, not inside `src/`.
-- Prefer new rewrite concepts where intentional: Functions → Hooks, Dev servers → Services, TOML config, embedded hook metadata.
+- `main` is the behaviour reference, not the architecture reference.
+- New code stays under `packages/`.
+- Rust owns runtime truth.
+- Swift owns macOS shell + UI.
+- SwiftUI views stay dumb.
+- Do not recreate `ServerStore` or any god object.
+- Do not recreate current Settings code. Build the rewrite Settings surface from scratch against the new models/APIs.
+- Keep files small and split by responsibility.
+- Put tests in sibling `tests/` folders, not `src/`.
+- Functions are now Hooks.
+- Dev servers are now Services.
+- Config is TOML at `~/.config/rack/config.toml`.
+- Deployed hooks live under `~/.rack/hooks`.
 
-## Current known completed parity
+## Already done
 
 - [x] Service log files under `~/.rack/logs/services/*.log`.
 - [x] Open service logs in terminal.
-- [x] Basic cron hook scheduler for interval schedules.
-- [x] Launch at login controller.
+- [x] Basic ANSI log preview in menu bar.
+- [x] Service stop state handling fixed.
+- [x] Basic bespoke services FFI bridge.
+- [x] Pingora-based proxy.
+- [x] Basic service host routing for `*.localhost`.
+- [x] Basic hook dispatch for `rack.local`.
+- [x] Hook WASM execution runtime.
+- [x] Hook HTTP route macro with embedded WASM metadata.
+- [x] Hook cron macro with embedded WASM metadata.
+- [x] Basic deployed cron scheduler for interval schedules.
+- [x] `rack hook init`.
+- [x] `rack hook build`.
+- [x] `rack hook deploy`.
+- [x] Launch-at-login controller.
 - [x] Basic App Intents for start/stop/stop-all/reload hooks/launch login.
-- [x] Pingora-based proxy for service hosts and `rack.local` hooks.
-- [x] Hook SDK route/cron macros with embedded WASM metadata.
-- [x] `rack hook init`, `rack hook build`, `rack hook deploy`.
 
----
+## App / macOS shell
 
-## P0: App surface / Swift parity
-
-### Settings window
-
-Main refs:
-
-- `Sources/Rack/App/RackApp.swift`
-- `Sources/Rack/UI/SettingsView.swift`
-- `Sources/Rack/UI/GeneralSettingsPage.swift`
-- `Sources/Rack/UI/ServersSettingsPage.swift`
-- `Sources/Rack/UI/FunctionsRuntimeSettingsPage.swift`
-
-Rewrite refs:
-
-- `packages/mac/src/rack-app.swift`
-- `packages/ui/src/menu-bar/menu-bar.swift`
-
-TODO:
-
-- [ ] Add a real Settings window/scene in `packages/mac`.
-- [ ] Wire `MenuBarContentView(openSettings:)`; current gear/add-service paths effectively no-op.
-- [ ] Add Settings shell in `packages/ui`.
-- [ ] Add General settings page.
-- [ ] Add Services settings page.
-- [ ] Add Hooks settings/runtime page.
-- [ ] Keep macOS window ownership in `packages/mac`; keep SwiftUI views in `packages/ui`.
-
-### General settings
-
-Main ref: `Sources/Rack/UI/GeneralSettingsPage.swift`
-
-TODO:
-
-- [ ] Add launch-at-login toggle using `LaunchAtLoginController`.
-- [ ] Show launch-at-login error/status messages.
-- [ ] Add terminal picker: Ghostty, Terminal, iTerm2, Warp/default.
-- [ ] Persist selected terminal through Rack config, not stale `@AppStorage` if possible.
-- [ ] Show config file path.
-- [ ] Add reveal/open config actions.
-- [ ] Add quit action.
-- [ ] Add standard ports UI once standard port support exists again.
-
-### Service management UI
-
-Main refs:
-
-- `Sources/Rack/UI/ServersSettingsPage.swift`
-- `Sources/Rack/UI/ServerSettingsPanel.swift`
-- `Sources/Rack/UI/ServerConfigurationForm.swift`
-- `Sources/Rack/Server/ServerStore.swift`
-
-Rewrite refs:
-
-- `packages/ui/src/menu-bar/service-models.swift`
-- `packages/ui/src/menu-bar/rack-view-model.swift`
-- `packages/core/src/config/mod.rs`
-- `packages/cli/src/service.rs`
-
-TODO:
-
-- [ ] Add service add UI.
-- [ ] Add service edit UI.
-- [ ] Add service remove UI.
-- [ ] Add service duplicate UI if still desired.
-- [ ] Add per-service detail panel.
-- [ ] Expose/edit fields: `name`, `host`, `run`, `working_dir`, `auto_start`.
-- [ ] If restored in config, expose/edit `environment`, custom domain, explicit port, args/port flag.
-- [ ] Add copy local URL action.
-- [ ] Add open working directory action if main had it and it still fits.
-- [ ] Add open full logs action from service detail.
-- [ ] Add recent output panel in service detail.
-
-### Restart action
-
-Main refs:
-
-- `Sources/Rack/Server/ServerStore+Lifecycle.swift`
-- `Sources/Rack/UI/ServerSettingsPanel.swift`
-- `Sources/Rack/App/RackIntents.swift`
-
-Rewrite refs:
-
-- Backend exists around `packages/services/src/runtime.rs`
-- `packages/services/src/ffi/functions.rs`
-- `packages/mac/src/rack-services-client.swift`
-- `packages/ui/src/menu-bar/rack-view-model.swift`
-- `packages/mac/src/rack-intents.swift`
-
-TODO:
-
-- [ ] Bind restart through services FFI.
-- [ ] Add `RackServicesClient.restart(id:)`.
-- [ ] Add `RackViewModel.restart(id:)`.
-- [ ] Add restart UI where appropriate.
-- [ ] Add `RestartRackServiceIntent`.
-- [ ] Add URL action for restart once URL scheme exists.
-
-### URL scheme handling
-
-Main refs:
-
-- `Sources/Rack/App/RackApp.swift`
-- `Makefile` on `main` for `CFBundleURLTypes`
-- `README.md`
-
-TODO:
-
-- [ ] Register `rack://` URL scheme in app bundle generation.
-- [ ] Add app delegate or `onOpenURL` handling in `packages/mac`.
-- [ ] Implement `rack://settings`.
-- [ ] Implement `rack://server/start?id=...` or service equivalent.
-- [ ] Implement `rack://server/stop?id=...` or service equivalent.
-- [ ] Implement `rack://server/restart?id=...` or service equivalent.
-- [ ] Implement `rack://server/stop-all` or service equivalent.
-- [ ] Implement `rack://functions/reload` as `rack://hooks/reload`, with compat alias if needed.
-- [ ] Document new/compat URL scheme.
-
-### App lifecycle
-
-Main ref: `Sources/Rack/App/RackApp.swift`
-
-Rewrite refs:
-
-- `packages/mac/src/rack-app.swift`
-- `packages/ui/src/menu-bar/rack-view-model.swift`
-- `packages/mac/src/rack-services-client.swift`
-
-TODO:
-
-- [ ] Add explicit lifecycle owner in `packages/mac`, likely `AppDelegate`.
-- [ ] Initialize runtime/model before App Intents can run.
-- [ ] Move `RackIntentBridge.model` setup out of menu `.task` so shortcuts work before the menu opens.
-- [ ] Handle termination.
-- [ ] Call runtime shutdown on app termination.
-- [ ] Stop active services on Quit/terminate if that remains product behaviour.
+- [ ] Add a real app lifecycle owner in `packages/mac`.
+- [ ] Add `AppDelegate` or equivalent.
 - [ ] Keep app lifecycle out of SwiftUI views.
-
-### CLI installer
-
-Main refs:
-
-- `Sources/Rack/App/CLIInstaller.swift`
-- `Sources/Rack/App/RackApp.swift`
-
-Rewrite refs:
-
-- `Makefile` bundles CLI into `Contents/Resources/rack`
-
-TODO:
-
-- [ ] Restore bundled CLI installation/symlink flow.
+- [ ] Initialize runtime/model before menu UI appears.
+- [ ] Initialize App Intent bridge before any shortcut can run.
+- [ ] Move `RackIntentBridge.model = model` out of the menu `.task`.
+- [ ] Handle app termination.
+- [ ] Call runtime shutdown on termination.
+- [ ] Decide whether app termination stops all running services.
+- [ ] Ensure Quit button and normal app quit share shutdown semantics.
+- [ ] Add `rack://` URL scheme to app bundle.
+- [ ] Add URL handling in mac package.
+- [ ] Add `rack://settings`.
+- [ ] Add `rack://service/start?id=...`.
+- [ ] Add `rack://service/stop?id=...`.
+- [ ] Add `rack://service/restart?id=...`.
+- [ ] Add `rack://service/stop-all`.
+- [ ] Add `rack://hooks/reload`.
+- [ ] Add compat handling for old `rack://server/...` URLs if desired.
+- [ ] Add compat handling for old `rack://functions/reload` if desired.
+- [ ] Restore bundled CLI installer.
 - [ ] Link bundled CLI to `~/.local/bin/rack`.
-- [ ] Add/update `~/.zprofile` for `~/.local/bin` if needed.
-- [ ] Handle existing non-symlink safely.
-- [ ] Surface install failures non-intrusively.
+- [ ] Add `~/.local/bin` to user shell profile when safe.
+- [ ] Handle existing non-symlink `rack` safely.
+- [ ] Surface CLI install errors quietly and usefully.
+- [ ] Ensure app bundle includes CLI resource.
+- [ ] Ensure app bundle includes correct Rust library/binary artifacts.
+- [ ] Restore app icon/resources if missing.
+- [ ] Revisit signing/notarization flow.
 
-### App Intents polish
+## Settings UI, built from scratch
 
-Main ref: `Sources/Rack/App/RackIntents.swift`
+- [ ] Build a new Settings window from scratch.
+- [ ] Do not port the current/main Settings implementation directly.
+- [ ] Use `main` only as feature reference for Settings.
+- [ ] Put Settings window ownership in `packages/mac`.
+- [ ] Put Settings SwiftUI views in `packages/ui`.
+- [ ] Build Settings against new rewrite view models/APIs.
+- [ ] Keep Settings views dumb.
+- [ ] Add Settings shell/sidebar/tabs.
+- [ ] Add General page.
+- [ ] Add Services page.
+- [ ] Add Hooks page.
+- [ ] Add Network/Ports page if that feels cleaner than General.
+- [ ] Wire menu bar gear button to open Settings.
+- [ ] Wire “Add Service” empty-state/menu action to open Settings or add-service flow.
+- [ ] Make Settings usable without menu bar popover state.
+- [ ] Add launch-at-login toggle.
+- [ ] Show launch-at-login status/errors.
+- [ ] Add terminal picker.
+- [ ] Support Ghostty.
+- [ ] Support Terminal.app.
+- [ ] Support iTerm/iTerm2.
+- [ ] Support Warp/default `.command` fallback.
+- [ ] Persist terminal selection through Rack config, not stale `@AppStorage`.
+- [ ] Show config path.
+- [ ] Add reveal config in Finder.
+- [ ] Add open config in editor/default app.
+- [ ] Add reload config action if safe.
+- [ ] Show config parse errors.
+- [ ] Add standard ports toggle once runtime support exists.
+- [ ] Show standard ports status/errors.
+- [ ] Add quit action.
+- [ ] Add about/version info if useful.
 
-Rewrite ref: `packages/mac/src/rack-intents.swift`
+## Menu bar UI
 
-TODO:
+- [ ] Keep current good product shape: small native menu bar popover.
+- [ ] Show service rows.
+- [ ] Show status dots/states.
+- [ ] Show running count.
+- [ ] Show start/stop controls.
+- [ ] Keep restart/refresh button removed unless restart is explicitly reintroduced.
+- [ ] Add restart only where it is semantically correct.
+- [ ] Keep logs preview.
+- [ ] Keep ANSI formatting in logs preview.
+- [ ] Show failed service state when runtime supports it.
+- [ ] Show starting state clearly.
+- [ ] Show detected backend port(s) if useful.
+- [ ] Show local service URL.
+- [ ] Add copy URL action.
+- [ ] Add open URL action.
+- [ ] Add open logs action.
+- [ ] Add open working directory action if useful.
+- [ ] Add hooks summary section if useful.
+- [ ] Add hook reload button only if reload actually reloads runtime/proxy/scheduler.
+- [ ] Otherwise label hook action as summary refresh only or omit it.
+- [ ] Ensure menu does not own runtime state.
 
-- [ ] Add restart intent.
-- [ ] Add launch-at-login intents to shortcuts if desired.
-- [ ] Add phrase variants matching main, e.g. “with Rack” and “in Rack”.
-- [ ] Ensure entity search includes host/working directory once available.
-- [ ] Ensure App Intent bridge is available before menu is opened.
+## Service config model
 
----
+- [ ] Decide whether `run` remains one shell command string.
+- [ ] Decide whether to restore separate `command` + `arguments`.
+- [ ] Decide whether to restore per-service environment variables.
+- [ ] Decide whether to restore custom domains.
+- [ ] Decide whether to restore explicit configured ports.
+- [ ] Decide whether to restore `portFlag`.
+- [ ] Keep `host` mapping to `<host>.localhost`.
+- [ ] Keep `working_dir`.
+- [ ] Keep `auto_start`.
+- [ ] Add config migration if old JSON config should be imported automatically.
+- [ ] Map old `config.json` services to new TOML where possible.
+- [ ] Preserve existing users’ service definitions where possible.
+- [ ] Keep normal load from source TOML read-only.
+- [ ] Keep generated/backfilled cache separate if needed.
+- [ ] Add validation for any restored fields.
+- [ ] Add config write/update APIs.
+- [ ] Preserve nice TOML formatting when writing.
+- [ ] Expose config path over FFI/control API.
+- [ ] Expose config parse/validation errors to UI.
 
-## P0: Service runtime parity
+## Service runtime
 
-### Config compatibility and migration
-
-Main refs:
-
-- `Sources/rack-core/src/config/storage.rs`
-- `Sources/rack-core/src/config/models.rs`
-
-Rewrite refs:
-
-- `packages/core/src/config/mod.rs`
-- `packages/core/src/config/backfill.rs`
-- `packages/core/src/config/write.rs`
-
-TODO:
-
-- [ ] Decide whether to import old `~/.config/rack/config.json` automatically.
-- [ ] If yes, implement JSON → TOML migration.
-- [ ] Preserve existing main users’ services where possible.
-- [ ] Map old ServerBar paths if still relevant.
-- [ ] Keep source TOML user-editable and do not rewrite unnecessarily.
-- [ ] Add migration tests in `packages/core/tests/`.
-
-### Config model gaps
-
-Main had fields/concepts not currently represented in rewrite.
-
-TODO:
-
-- [ ] Decide fate of `arguments`.
-- [ ] Decide fate of per-service `environment`.
-- [ ] Decide fate of `customDomain`.
-- [ ] Decide fate of explicit configured `port`.
-- [ ] Decide fate of `portFlag`.
-- [ ] Decide whether `run` remains a single shell command or splits into command/args.
-- [ ] If intentionally removed, provide migration behaviour and docs.
-- [ ] If restored, update core config, services, CLI, FFI, Swift models, and UI.
-
-### Service launch behaviour
-
-Main ref: `Sources/rack-core/src/process.rs`
-
-Rewrite refs:
-
-- `packages/services/src/process/mod.rs`
-- `packages/services/src/supervisor/*`
-- `packages/core/src/config/mod.rs`
-
-TODO:
-
-- [ ] Restore or replace login-shell environment loading.
+- [ ] Add service add API.
+- [ ] Add service edit API.
+- [ ] Add service remove API.
+- [ ] Add service duplicate API if wanted.
+- [ ] Add service restart API.
+- [ ] Add restart to FFI.
+- [ ] Add restart to Swift client.
+- [ ] Add restart to view model.
+- [ ] Add restart App Intent.
+- [ ] Add failed service state.
+- [ ] Add readiness timeout.
+- [ ] Avoid services stuck in `Starting` forever.
+- [ ] Surface readiness failure message.
+- [ ] Track process exit reason where possible.
+- [ ] Track process group cleanly.
+- [ ] Keep registry as source of truth.
+- [ ] Treat registry/process-handle disagreement as internal desync error.
+- [ ] Do not silently paper over impossible states.
+- [ ] Register proxy origin when service starts if pending-route behaviour is desired.
+- [ ] Register destination when port is detected.
+- [ ] Deregister destination on stop/failure.
+- [ ] Add pending route/waiting behaviour if desired.
+- [ ] Preserve good UX for opening service URL immediately after clicking start.
+- [ ] Restore or replace login-shell env loading.
 - [ ] Merge current process env.
 - [ ] Add per-service env overrides if config supports them.
-- [ ] Preserve color env vars (`FORCE_COLOR`, `CLICOLOR_FORCE`, `TERM`).
-- [ ] Decide on explicit `PORT`/`HOST` injection.
-- [ ] Decide on old `portFlag` behaviour.
-- [ ] If no explicit ports by design, document port detection model.
-- [ ] Add process launch tests where possible.
+- [ ] Keep colour env vars for terminal output.
+- [ ] Decide whether to inject `PORT`.
+- [ ] Decide whether to inject `HOST`.
+- [ ] Decide whether to append old `portFlag`.
+- [ ] Decide whether `rack-bridge` / Unix socket launch path is still needed.
+- [ ] Add Unix socket backend support if needed.
+- [ ] Keep local TCP-only model if that is enough.
+- [ ] Add auto-start services on runtime init.
+- [ ] Make stop kill full process group reliably.
+- [ ] Make logs truncate on start/restart.
+- [ ] Make logs append stdout/stderr chunks safely.
+- [ ] Add service runtime tests.
 
-### Readiness and failure states
+## Service UI/settings
 
-Main refs:
+- [ ] Add add-service form from scratch.
+- [ ] Add edit-service form from scratch.
+- [ ] Add remove confirmation.
+- [ ] Add duplicate action if kept.
+- [ ] Add per-service detail panel from scratch.
+- [ ] Add fields for name.
+- [ ] Add field for host.
+- [ ] Add field for run command.
+- [ ] Add field for working directory.
+- [ ] Add field for auto-start.
+- [ ] Add environment variable editor if env is restored.
+- [ ] Add custom domain field if custom domains are restored.
+- [ ] Add explicit port field if explicit ports are restored.
+- [ ] Add command arguments UI if args are restored.
+- [ ] Add validation messages.
+- [ ] Add save/cancel flow.
+- [ ] Add dirty-state handling.
+- [ ] Add recent output in detail panel.
+- [ ] Add open full logs action.
+- [ ] Add copy URL.
+- [ ] Add open URL.
+- [ ] Add start/stop/restart actions.
 
-- `Sources/rack-core/src/process_supervisor/readiness.rs`
-- `Sources/Rack/Server/ServerStore+Lifecycle.swift`
+## Proxy
 
-Rewrite refs:
-
-- `packages/services/src/registry/service.rs`
-- `packages/services/src/supervisor/runtime.rs`
-- `packages/services/src/snapshot.rs`
-
-TODO:
-
-- [ ] Add explicit failed service state, e.g. `Failed { message }`.
-- [ ] Add readiness timeout for services that never open a port.
-- [ ] Surface readiness failure in snapshots/FFI/UI.
-- [ ] Avoid leaving services stuck in `Starting` forever.
-- [ ] Add tests in `packages/services/tests/`.
-
-### Pending route behaviour
-
-Main refs:
-
-- `Sources/rack-core/src/process_supervisor/routes.rs`
-- `Sources/rack-core/src/routes.rs`
-- `Sources/Rack/Proxy/HTTPProxyHandler+Backend.swift`
-
-Rewrite refs:
-
-- `packages/services/src/runtime.rs`
-- `packages/proxy/src/services/*`
-
-TODO:
-
-- [ ] Register service origin with proxy when service enters `Starting`, if desired.
-- [ ] Have proxy wait/retry briefly while backend is starting.
-- [ ] Preserve good UX for opening `jaf.localhost` immediately after start.
-- [ ] Return clear starting/failure responses.
-
-### Service bridge / Unix sockets
-
-Main refs:
-
-- `Sources/rack-core/src/process.rs`
-- `Sources/rack-bridge/src/*`
-- `Sources/Rack/Proxy/HTTPProxyHandler+Backend.swift`
-
-Rewrite refs:
-
-- `packages/services/src/process/mod.rs`
-- `packages/proxy/src/services/destination.rs`
-
-TODO:
-
-- [ ] Decide if `rack-bridge` / Unix socket launch path is still needed.
-- [ ] If yes, add destination support for Unix sockets.
-- [ ] If no, remove/doc old behaviour and ensure loopback TCP covers all supported services.
-
-### Runtime snapshots and FFI
-
-TODO:
-
-- [ ] Expose all service fields needed by Swift settings.
-- [ ] Expose config path.
-- [ ] Expose config mutation APIs: add, edit, remove, duplicate, save.
-- [ ] Expose restart.
-- [ ] Expose failed state.
-- [ ] Keep FFI functions thin wrappers over native runtime functions.
-- [ ] Keep shared struct layouts/version checks updated.
-
----
-
-## P0: Proxy parity
-
-### Host routing
-
-Main refs:
-
-- `Sources/rack-core/src/routes.rs`
-- `Sources/rack-core/src/proxy.rs`
-
-Rewrite refs:
-
-- `packages/proxy/src/services/*`
-- `packages/proxy/tests/route.rs`
-
-TODO:
-
-- [ ] Decide whether nested/base-subdomain fallback is still required.
-- [ ] If yes, support `fix-auth.myapp.localhost` resolving to base service `myapp`.
-- [ ] If no, document intentional rejection of nested localhost hosts.
-- [ ] Keep hooks on `rack.local`.
-- [ ] Keep services on `*.localhost`.
-
-### Backend wait/retry and loop detection
-
-Main refs:
-
-- `Sources/Rack/Proxy/HTTPProxyHandler.swift`
-- `Sources/Rack/Proxy/HTTPProxyHandler+Backend.swift`
-- `Sources/rack-core/src/proxy.rs`
-
-Rewrite ref: `packages/proxy/src/server/*`
-
-TODO:
-
+- [ ] Keep Pingora.
+- [ ] Keep folder structure clean: `server/`, `services/`, `hooks/` style.
+- [ ] Keep proxy focused on routing.
+- [ ] Keep service lifecycle out of proxy.
+- [ ] Let services register origins/destinations with proxy.
+- [ ] Let hooks package dispatch hook requests.
+- [ ] Decide whether nested subdomain fallback is required.
+- [ ] Support `fix-auth.myapp.localhost -> myapp` if required.
+- [ ] Otherwise document nested localhost rejection.
 - [ ] Add backend wait/retry while service is starting.
 - [ ] Restore loopback proxy loop detection.
-- [ ] Return HTTP `508 Loop Detected` with useful guidance where appropriate.
-- [ ] Add tests for loop detection and starting-service waits.
-
-### WebSocket proxying
-
-Main refs:
-
-- `Sources/Rack/Proxy/ProxyServer.swift`
-- `Sources/Rack/Proxy/WebSocketProxy.swift`
-
-Rewrite refs:
-
-- `packages/proxy/src/server/*`
-- `packages/proxy/tests/listener.rs`
-
-TODO:
-
-- [ ] Verify current Pingora WebSocket upgrade/tunnel behaviour against real Vite/Bun apps.
-- [ ] If tests only cover handshake but not frame tunnelling, add frame tunnel tests.
-- [ ] Implement explicit upgrade tunnelling if Pingora path is insufficient.
-- [ ] Test common dev servers: Vite, Next, Bun, Rails/Hotwire if relevant.
-
-### HTTPS and standard ports
-
-Main refs:
-
-- `Sources/Rack/Proxy/ProxyServer.swift`
-- `Sources/Rack/Proxy/ProxyPortForwarding.swift`
-- `Sources/RackPortRelay/*`
-- `Sources/rack-bridge/src/tunnel.rs`
-
-Rewrite refs:
-
-- `packages/proxy/src/server/*`
-- `packages/services/src/runtime.rs`
-- `packages/core/public/default-config.toml`
-
-TODO:
-
-- [ ] Restore HTTPS listener if still required.
-- [ ] Restore local TLS certificate generation/trust if still required.
-- [ ] Restore privileged standard port forwarding for 80/443 if still required.
-- [ ] Restore `/etc/hosts` management for `rack.local` if still required.
-- [ ] Bundle any privileged helper/relay in app build if still required.
-- [ ] Wire `use_standard_ports` TOML config to actual runtime behaviour.
-- [ ] Expose status/errors in Settings.
-
-### Listener coverage
-
-Main ref: `Sources/Rack/Proxy/ProxyServer.swift`
-
-TODO:
-
+- [ ] Return useful `508 Loop Detected` response when needed.
+- [ ] Add clear error for unknown service host.
+- [ ] Add clear error for service known but not running.
+- [ ] Add clear error for backend connection failure.
+- [ ] Verify WebSocket frame tunnelling, not just upgrade headers.
+- [ ] Add explicit WebSocket tunnel if Pingora path is insufficient.
+- [ ] Test Vite HMR.
+- [ ] Test Bun dev server websockets.
+- [ ] Test Next dev server websockets if relevant.
 - [ ] Bind IPv4 loopback.
-- [ ] Bind IPv6 loopback (`::1`) if main behaviour is still needed.
-- [ ] Ensure port selection/fallback matches main or document changes.
+- [ ] Bind IPv6 loopback if main parity requires it.
+- [ ] Restore HTTPS listener if required.
+- [ ] Restore local cert generation/trust if required.
+- [ ] Restore standard port forwarding if required.
+- [ ] Restore privileged relay/helper if required.
+- [ ] Restore `/etc/hosts` management for `rack.local` if required.
+- [ ] Wire `use_standard_ports` TOML setting to actual behaviour.
+- [ ] Add proxy tests for host parsing.
+- [ ] Add proxy tests for unknown hosts.
+- [ ] Add proxy tests for starting-service wait.
+- [ ] Add proxy tests for loop detection.
+- [ ] Add proxy tests for websocket frame tunnel.
+- [ ] Add proxy tests for IPv6 if supported.
+- [ ] Add proxy tests for HTTPS if supported.
 
-### `rack.local` behaviour
+## Hooks runtime
 
-Main refs:
+- [ ] Keep embedded WASM metadata as source of truth.
+- [ ] Do not go back to mandatory `manifest.toml`.
+- [ ] Add package identity metadata if needed.
+- [ ] Add package version metadata if needed.
+- [ ] Add route IDs if needed.
+- [ ] Add cron IDs if needed.
+- [ ] Add hook load error summaries.
+- [ ] Show metadata parse errors in UI/CLI.
+- [ ] Validate required exports at load/deploy time.
+- [ ] Validate required memory export.
+- [ ] Validate alloc/dealloc exports.
+- [ ] Validate route entry exports.
+- [ ] Validate cron entry exports.
+- [ ] Add timeout/fuel/epoch interruption for in-process Wasmtime.
+- [ ] Prevent hanging hooks from blocking runtime threads forever.
+- [ ] Harden guest pointer/length handling.
+- [ ] Use checked arithmetic for pointer + length.
+- [ ] Handle negative guest lengths safely.
+- [ ] Review `rack_alloc` / `rack_dealloc` ABI pairing.
+- [ ] Add malformed guest output tests.
+- [ ] Add hook started/finished/duration logging.
+- [ ] Add hook error logging.
+- [ ] Add hook stdout/stderr capture or structured logging.
+- [ ] Write hook logs under `~/.rack/logs/hooks/` or chosen equivalent.
+- [ ] Surface hook failures in UI.
+- [ ] Surface hook failures in CLI.
 
-- `Sources/Rack/Proxy/HTTPProxyHandler.swift`
-- `Sources/rack-core/src/proxy.rs`
+## Hook HTTP routing
 
-Rewrite refs:
+- [ ] Normalize leading slash.
+- [ ] Decide trailing slash semantics.
+- [ ] Reject `/` if still reserved.
+- [ ] Reject `/_*` if still reserved.
+- [ ] Add glob route support if still needed.
+- [ ] Choose most specific route.
+- [ ] Detect equal-specificity conflicts.
+- [ ] Return useful route conflict errors.
+- [ ] Inject route metadata into request.
+- [ ] Include package in request metadata.
+- [ ] Include route id in request metadata.
+- [ ] Include route pattern in request metadata.
+- [ ] Include matched path in request metadata.
+- [ ] Align no-route 404 behaviour.
+- [ ] Align conflict 409 behaviour if applicable.
+- [ ] Add route normalization tests.
+- [ ] Add glob tests.
+- [ ] Add route conflict tests.
+- [ ] Add route metadata tests.
 
-- `packages/proxy/src/hooks.rs`
-- `packages/hooks/src/http/*`
+## Hook SDK
 
-TODO:
-
-- [ ] Confirm root `rack.local/` response should be hook dispatch or simple Rack response.
-- [ ] Preserve reserved `/_*` semantics if still needed.
-- [ ] Add compatibility tests for `rack.local` behaviours users rely on.
-
----
-
-## P0: Hooks runtime and SDK parity
-
-### CLI hook command parity
-
-Main refs:
-
-- `Sources/rack-cli-rs/src/main.rs`
-- `Sources/rack-cli-rs/src/function_cli/*`
-
-Rewrite refs:
-
-- `packages/cli/src/main.rs`
-- `packages/cli/src/hook.rs`
-
-TODO:
-
-- [ ] Add aliases/compat group for `rack fn ...` if desired.
-- [ ] Add `rack hook add` or decide `init` replaces it.
-- [ ] Add `rack hook compile` alias for build if desired.
-- [ ] Add `rack hook test`.
-- [ ] Add `rack hook install` or define deploy as replacement.
-- [ ] Add `rack hook list` / `ls`.
-- [ ] Add `rack hook remove` / `rm` / `uninstall`.
-- [ ] Add `--replace` or equivalent for deploy/install.
-- [ ] Add copy install mode if symlink/move deploy is not enough.
-- [ ] Add clear deployed-hook error reporting.
-
-### `hook init` parity
-
-Main ref: `Sources/rack-cli-rs/src/function_cli/init.rs`
-
-Rewrite ref: `packages/cli/src/hook.rs`
-
-TODO:
-
-- [ ] Allow omitted path/current directory if desired.
-- [ ] Allow existing empty directory.
-- [ ] Reject non-empty directories with clear error.
-- [ ] Sanitize package names like main did.
-- [ ] Decide whether no `manifest.toml` is final.
-- [ ] Keep embedded proc metadata as new source of truth.
-- [ ] Ensure template demonstrates route and cron patterns.
-- [ ] Ensure required wasm target is installed or print actionable error.
-
-### Hook build/deploy packaging
-
-Main refs:
-
-- `Sources/rack-cli-rs/src/function_cli/build.rs`
-- `Sources/rack-cli-rs/src/function_cli/install.rs`
-
-Rewrite refs:
-
-- `packages/cli/src/hook.rs`
-- `packages/services/src/hooks/mod.rs`
-
-TODO:
-
-- [ ] Decide final WASM target: current rewrite uses `wasm32-unknown-unknown`; main used `wasm32-wasip1`.
-- [ ] Use `cargo metadata` to identify package/cdylib output robustly.
-- [ ] Validate project shape before build.
-- [ ] Produce stable artifact path/name if useful.
-- [ ] Validate embedded metadata at build/deploy time.
-- [ ] Avoid surprising destructive deploy moves, or document them clearly.
-- [ ] Ensure symlink-back deploy works robustly across paths/filesystems.
-
-### SDK macro surface
-
-Main refs:
-
-- `Sources/rack-macros/src/lib.rs`
-- `Sources/rack-sdk-rs/src/*`
-
-Rewrite refs:
-
-- `packages/sdk-macro/src/*`
-- `packages/sdk/src/*`
-
-TODO:
-
-- [ ] Decide whether to preserve zero-arg `#[rack::route]` / `#[rack::cron]` compatibility.
-- [ ] Keep new syntax like `#[rack::route(GET, "path")]` as desired.
-- [ ] Add/restore `#[rack::payload]` if public SDK parity matters.
-- [ ] Add typed `Request<T>`.
+- [ ] Decide whether zero-arg `#[rack::route]` compatibility is required.
+- [ ] Decide whether zero-arg `#[rack::cron]` compatibility is required.
+- [ ] Keep new `#[rack::route(GET, "path")]` syntax.
+- [ ] Keep new `#[rack::cron("every 5 minutes")]` syntax.
+- [ ] Add/restore `#[rack::payload]` if needed.
 - [ ] Add `Payload` trait.
+- [ ] Add typed `Request<T>`.
 - [ ] Add JSON body parsing.
-- [ ] Add `String` and `()` payload implementations.
-- [ ] Restore handler `Result<Response>` and `?` support.
-- [ ] Map payload errors to 400.
+- [ ] Add `String` payload support.
+- [ ] Add `()` payload support.
+- [ ] Restore handler `Result<Response>` support.
+- [ ] Restore `?` support in handlers.
+- [ ] Map bad payload to 400.
 - [ ] Map handler errors to 500.
-- [ ] Add compile tests for valid/invalid macro signatures.
-
-### HTTP request API
-
-Main ref: `Sources/rack-sdk-rs/src/request.rs`
-
-Rewrite refs:
-
-- `packages/sdk/src/http.rs`
-- `packages/hooks/src/http/dispatch/*`
-- `packages/proxy/src/hooks.rs`
-
-TODO:
-
-- [ ] Expose method.
-- [ ] Expose path.
+- [ ] Expose request method.
+- [ ] Expose request path.
 - [ ] Expose full URI/query.
 - [ ] Expose host.
 - [ ] Expose headers.
 - [ ] Expose `header(name)` helper.
 - [ ] Expose body.
-- [ ] Expose package/hook metadata.
-- [ ] Expose route id.
-- [ ] Expose route pattern.
-- [ ] Expose matched path.
-- [ ] Ensure proxy sends enough request data to hooks.
-
-### HTTP response API
-
-Main refs:
-
-- `Sources/rack-sdk-rs/src/http_response.rs`
-- `Sources/rack-sdk-rs/src/response.rs`
-- `Sources/rack-core/src/functions/runtime/response.rs`
-
-Rewrite refs:
-
-- `packages/sdk/src/response.rs`
-- `packages/hooks/src/http/dispatch/*`
-
-TODO:
-
-- [ ] Validate statuses are `100..=599`.
-- [ ] Normalize/lowercase headers consistently.
-- [ ] Decide duplicate header behaviour.
-- [ ] Add helpers: `ok`, `created`, `bad_request`, `teapot`, `server_error`.
-- [ ] Add builder helpers: `.text()`, `.html()`, `.csv()`, `.json()`, `.bytes()`.
-- [ ] Align content types with main, including charset.
-- [ ] Test response normalization.
-
-### Hook route matching
-
-Main refs:
-
-- `Sources/rack-core/src/functions/manifest.rs`
-- `Sources/rack-core/src/functions/routing.rs`
-- `Sources/rack-core/src/functions/tests.rs`
-
-Rewrite refs:
-
-- `packages/sdk-macro/src/metadata.rs`
-- `packages/hooks/src/http/dispatch/router.rs`
-
-TODO:
-
-- [ ] Normalize leading slash.
-- [ ] Trim trailing slash if main behaviour should hold.
-- [ ] Reject `/` if still reserved.
-- [ ] Reject `/_*` reserved paths if still needed.
-- [ ] Add glob route support if still needed.
-- [ ] Choose most specific route.
-- [ ] Detect equal-specificity conflicts.
-- [ ] Return useful conflict/reserved-path errors.
-- [ ] Add route matching tests in `packages/hooks/tests/`.
-
-### Hook runtime safety and behaviour
-
-Main refs:
-
-- `Sources/rack-core/src/functions/runtime/process.rs`
-- `Sources/rack-core/src/functions/runtime/timeout.rs`
-- `Sources/rack-core/src/functions/runtime/dispatch.rs`
-
-Rewrite refs:
-
-- `packages/hooks/src/runtime/wasm.rs`
-- `packages/hooks/src/http/dispatch/*`
-
-TODO:
-
-- [ ] Add timeout/fuel/epoch interruption for in-process Wasmtime.
-- [ ] Prevent hanging hooks from blocking runtime threads indefinitely.
-- [ ] Validate required exports at load/deploy time.
-- [ ] Surface load errors in hook summaries.
-- [ ] Harden guest memory pointer/length handling.
-- [ ] Use checked arithmetic for pointer + length.
-- [ ] Handle negative lengths safely.
-- [ ] Review `rack_alloc` / `rack_dealloc` ABI pairing.
-- [ ] Add tests for malformed guest outputs where feasible.
-
-### Hook logging
-
-Main refs:
-
-- `Sources/rack-sdk-rs/src/log.rs`
-- `Sources/rack-core/src/functions/logs.rs`
-- `Sources/rack-core/src/functions/runtime/process.rs`
-
-TODO:
-
+- [ ] Expose route metadata.
+- [ ] Validate response status `100..=599`.
+- [ ] Normalize response headers.
+- [ ] Decide duplicate response header behaviour.
+- [ ] Add response helpers: `ok`.
+- [ ] Add response helpers: `created`.
+- [ ] Add response helpers: `bad_request`.
+- [ ] Add response helpers: `teapot`.
+- [ ] Add response helpers: `server_error`.
+- [ ] Add response builder `.text()`.
+- [ ] Add response builder `.html()`.
+- [ ] Add response builder `.csv()`.
+- [ ] Add response builder `.json()`.
+- [ ] Add response builder `.bytes()`.
+- [ ] Align text content type/charset with main.
 - [ ] Restore `rack::log::info`.
 - [ ] Restore `rack::log::warn`.
 - [ ] Restore `rack::log::error`.
-- [ ] Capture hook stderr/stdout or structured logs.
-- [ ] Write hook logs under `~/.rack/logs/hooks/` or chosen equivalent.
-- [ ] Add hook invocation started/finished/duration logs.
-- [ ] Surface hook failures in UI/CLI.
+- [ ] Restore `rack::fs!` if still part of public SDK.
+- [ ] Add SDK compile tests.
+- [ ] Add macro invalid-signature tests.
 
-### Cron parity
+## Cron hooks
 
-Main refs:
-
-- `Sources/rack-core/src/functions/scheduler.rs`
-- `Sources/rack-core/src/schedule.rs`
-- `Sources/rack-sdk-rs/src/request.rs`
-- `Sources/rack-macros/src/lib.rs`
-
-Rewrite refs:
-
-- `packages/services/src/hooks/scheduler.rs`
-- `packages/hooks/src/runtime/wasm.rs`
-- `packages/sdk/src/cron.rs`
-- `packages/sdk-macro/src/cron.rs`
-
-TODO:
-
-- [ ] Add calendar schedule parser support: e.g. `friday at 17:00`, `weekdays at 9:30am`.
-- [ ] Reuse/port main schedule semantics where still desired.
+- [ ] Keep interval schedules working.
+- [ ] Add calendar schedule parser if required.
+- [ ] Support `friday at 17:00` if required.
+- [ ] Support `weekdays at 9:30am` if required.
+- [ ] Port/reuse main schedule semantics where useful.
 - [ ] Add `CronEvent` argument support.
-- [ ] Include package/id/schedule/scheduled_at in cron event.
-- [ ] Log `cron.started`, `cron.finished`, `cron.error` equivalents.
-- [ ] Decide first-run semantics: after interval vs computed `next_after`.
-- [ ] Add tests for interval and calendar cron schedules.
+- [ ] Include package in cron event.
+- [ ] Include hook id in cron event.
+- [ ] Include schedule in cron event.
+- [ ] Include scheduled-at timestamp in cron event.
+- [ ] Log cron started.
+- [ ] Log cron finished.
+- [ ] Log cron errors.
+- [ ] Decide first-run semantics.
+- [ ] Add interval schedule tests.
+- [ ] Add calendar schedule tests.
+- [ ] Add cron event payload tests.
 
-### Embedded metadata vs old manifest
+## Hook CLI
 
-Main refs:
+- [ ] Add `rack hook list`.
+- [ ] Add `rack hook ls` alias.
+- [ ] Add `rack hook remove`.
+- [ ] Add `rack hook rm` alias.
+- [ ] Add `rack hook uninstall` alias if useful.
+- [ ] Add `rack hook test`.
+- [ ] Add `rack hook install` if deploy should not cover it.
+- [ ] Add `rack hook compile` alias if useful.
+- [ ] Add `rack fn ...` compatibility group if desired.
+- [ ] Add `rack hook deploy --replace`.
+- [ ] Add non-destructive copy install mode if desired.
+- [ ] Make deploy move/symlink behaviour explicit in help text.
+- [ ] Allow `hook init` with omitted path if desired.
+- [ ] Allow `hook init` into existing empty directory.
+- [ ] Reject non-empty init target clearly.
+- [ ] Sanitize package names robustly.
+- [ ] Ensure wasm target is installed or print actionable error.
+- [ ] Use `cargo metadata` to discover package/cdylib output.
+- [ ] Validate embedded metadata during build/deploy.
+- [ ] Show deployed hooks/routes/crons/errors in list output.
+- [ ] Add hook CLI tests.
 
-- `Sources/rack-core/src/functions/manifest.rs`
-- `Sources/rack-cli-rs/src/function_cli/types.rs`
+## Hooks UI
 
-Rewrite refs:
-
-- `packages/sdk-macro/src/metadata.rs`
-- `packages/hooks/src/runtime/metadata.rs`
-- `packages/services/src/hooks/mod.rs`
-
-TODO:
-
-- [ ] Keep embedded WASM metadata as source of truth.
-- [ ] Add package identity/version metadata if needed.
-- [ ] Add route IDs if needed.
-- [ ] Add cron IDs/function names if needed.
-- [ ] Show metadata parse/load errors in `rack hook list` and UI.
-- [ ] Document migration from `manifest.toml` to proc macro metadata.
-
-### Hook UI/runtime page
-
-Main ref: `Sources/Rack/UI/FunctionsRuntimeSettingsPage.swift`
-
-Rewrite refs:
-
-- `packages/ui/src/menu-bar/*`
-- `packages/mac/src/rack-services-client.swift`
-- `packages/mac/src/ffi/rack-hooks-payload.swift`
-
-TODO:
-
-- [ ] Add hooks runtime/settings UI page.
+- [ ] Add Hooks Settings page from scratch.
 - [ ] Show deployed hooks.
 - [ ] Show HTTP routes.
 - [ ] Show cron hooks.
-- [ ] Show hook load errors/conflicts.
-- [ ] Add reload hooks button if safe.
-- [ ] Make reload actually reload proxy registry/scheduler, or label it as summary refresh only.
+- [ ] Show hook load errors.
+- [ ] Show route conflicts.
+- [ ] Show hook logs if available.
+- [ ] Add open hook directory action if useful.
+- [ ] Add remove deployed hook action if safe.
+- [ ] Add reload hooks action only when runtime reload is real.
+- [ ] Reload should update proxy registry.
+- [ ] Reload should update cron scheduler.
+- [ ] Reload should update UI summaries.
 
----
+## CLI services
 
-## P1: CLI/service UX parity
+- [ ] Decide whether to keep top-level `rack ls`.
+- [ ] Decide whether to keep top-level `rack start <name>`.
+- [ ] Decide whether to keep top-level `rack stop <name>`.
+- [ ] Decide whether to keep top-level `rack rm <name>`.
+- [ ] Support service lookup by ID.
+- [ ] Support service lookup by name if useful.
+- [ ] Support service lookup by host if useful.
+- [ ] Add `rack service edit`.
+- [ ] Add `rack service restart`.
+- [ ] Add `rack service duplicate` if useful.
+- [ ] Improve `rack service list` URLs.
+- [ ] Include proxy port in URL when not using standard ports.
+- [ ] Show starting/running/stopped/failed state.
+- [ ] Show detected backend port(s).
+- [ ] Add machine-readable output if useful.
+- [ ] Align control socket path with app.
+- [ ] Document `RACK_CONTROL_SOCKET`.
 
-### Top-level CLI commands
+## `rack dev`
 
-Main refs:
-
-- `Sources/rack-cli-rs/src/main.rs`
-- `Sources/rack-core/src/config/ipc.rs`
-
-Rewrite refs:
-
-- `packages/cli/src/main.rs`
-- `packages/cli/src/service.rs`
-- `packages/services/src/control/*`
-
-TODO:
-
-- [ ] Decide whether to preserve top-level `rack ls`.
-- [ ] Decide whether to preserve top-level `rack start <name>`.
-- [ ] Decide whether to preserve top-level `rack stop <name>`.
-- [ ] Decide whether to preserve top-level `rack rm <name>`.
-- [ ] Support name/host lookup in addition to ID if user-friendly.
-- [ ] Align control socket path with app expectations.
-- [ ] Document `RACK_CONTROL_SOCKET` override.
-
-### `rack dev`
-
-Main ref: `Sources/rack-cli-rs/src/dev.rs`
-
-TODO:
-
-- [ ] Reimplement `rack dev` auto-registration if still desired.
-- [ ] Detect common project types.
-- [ ] Infer service name/host.
+- [ ] Reimplement `rack dev` if still wanted.
+- [ ] Detect project type.
+- [ ] Infer service name.
+- [ ] Infer host.
 - [ ] Infer run command.
-- [ ] Register with running app.
+- [ ] Register service with running Rack app.
 - [ ] Start service.
-- [ ] Keep behaviour compatible with new no-explicit-port model.
+- [ ] Adapt behaviour to no-explicit-port model.
+- [ ] Add tests for project detection.
 
-### CLI list output
+## FFI / bridge
 
-Main ref: `Sources/rack-cli-rs/src/main.rs`
+- [ ] Keep bespoke bridge; do not switch to UniFFI.
+- [ ] Keep per-package `ffi/` folders where useful.
+- [ ] Keep FFI functions thin.
+- [ ] FFI should call native package functions and nothing else.
+- [ ] Standardize struct layout/order.
+- [ ] Keep ABI version checks.
+- [ ] Keep struct size checks.
+- [ ] Add config mutation FFI.
+- [ ] Add restart FFI.
+- [ ] Add failed-state FFI.
+- [ ] Add config path FFI.
+- [ ] Add hook reload FFI when real reload exists.
+- [ ] Add hook summaries/errors FFI improvements.
+- [ ] Avoid returning dangling pointers.
+- [ ] Clearly define ownership for Rust-allocated memory.
+- [ ] Clearly define ownership for Swift-provided buffers.
+- [ ] Add tests or compile-time checks where possible.
+- [ ] Keep Swift ABI declarations grouped and small.
+- [ ] Keep safe Swift client separate from raw ABI.
 
-Rewrite refs:
+## Standard ports / DNS / local networking
 
-- `packages/cli/src/service.rs`
-- `packages/services/src/snapshot.rs`
-
-TODO:
-
-- [ ] Show accurate reachable URL including proxy port if not standard.
-- [ ] Show running/stopped/starting/failed status clearly.
-- [ ] Show detected backend ports where useful.
-- [ ] Show service host/origin.
-- [ ] Support concise human output and machine-readable output if useful.
-
-### Config CRUD over CLI/control socket
-
-TODO:
-
-- [ ] Add service edit command.
-- [ ] Add service duplicate command if kept.
-- [ ] Add batch delete if kept.
-- [ ] Ensure CLI config mutations notify/rerender running app state.
-- [ ] Ensure mutations keep TOML formatting reasonably clean.
-
----
-
-## P1: Standard ports, DNS, and local networking
-
-Main refs:
-
-- `Sources/Rack/Proxy/ProxyPortForwarding.swift`
-- `Sources/RackPortRelay/*`
-- `Sources/rack-bridge/src/tunnel.rs`
-
-TODO:
-
-- [ ] Decide v1 standard-port strategy.
+- [ ] Decide if standard ports are v1 scope.
+- [ ] Decide if HTTPS is v1 scope.
+- [ ] Decide if local cert trust is v1 scope.
+- [ ] Decide if `/etc/hosts` management is v1 scope.
 - [ ] Restore privileged helper/relay if needed.
-- [ ] Restore install/uninstall flow.
-- [ ] Add status/error reporting.
+- [ ] Add install/uninstall flow for helper.
+- [ ] Add standard port status.
+- [ ] Add standard port errors.
+- [ ] Wire `use_standard_ports` config to runtime.
 - [ ] Add Settings toggle.
+- [ ] Add docs for permissions.
 - [ ] Add tests where practical.
-- [ ] Document required permissions.
-- [ ] Ensure `rack.local` resolution works without manual setup, if promised.
 
----
-
-## P1: Testing backlog
-
-### Core/config tests
-
-- [ ] JSON migration tests if implemented.
-- [ ] Old config field mapping tests.
-- [ ] TOML round-trip/write tests for new mutable settings.
-- [ ] Validation tests for restored fields.
-
-### Services tests
-
-- [ ] Start → running → stop lifecycle tests.
-- [ ] Restart tests.
-- [ ] Failed readiness tests.
-- [ ] Readiness timeout tests.
-- [ ] Environment merge tests.
-- [ ] Log file creation/append/truncate tests.
-- [ ] FFI ABI layout/version tests.
-
-### Proxy tests
-
-- [ ] Nested host fallback tests if supported.
-- [ ] Backend wait/retry tests.
-- [ ] Loop detection tests.
-- [ ] Full WebSocket frame tunnel tests.
-- [ ] IPv6 listener tests.
-- [ ] HTTPS listener tests if restored.
-- [ ] Standard port behaviour tests if practical.
-
-### Hooks tests
-
-- [ ] Route normalization tests.
-- [ ] Glob matching tests.
-- [ ] Route conflict tests.
-- [ ] Reserved path tests.
-- [ ] Request metadata injection tests.
-- [ ] Response normalization tests.
-- [ ] Timeout/hanging hook tests.
-- [ ] Bad guest ABI tests.
-- [ ] Cron interval tests.
-- [ ] Cron calendar schedule tests.
-- [ ] Hook logging tests.
-
-### CLI tests
-
-- [ ] `rack service add/list/start/stop/remove` integration tests.
-- [ ] `rack service edit` tests once added.
-- [ ] `rack dev` tests once added.
-- [ ] `rack hook init/build/deploy/list/remove/test` tests.
-- [ ] Compat alias tests if aliases are kept.
-
-### Swift/UI tests or manual QA
-
-- [ ] Menu bar opens and displays services.
-- [ ] Start/stop/restart from menu.
-- [ ] Logs preview ANSI colours.
-- [ ] Open logs in configured terminal.
-- [ ] Settings window opens.
-- [ ] Add/edit/remove service from Settings.
-- [ ] Launch at login toggle.
-- [ ] App Intents before menu opens.
-- [ ] URL scheme actions.
-- [ ] Quit/termination cleanup.
-
----
-
-## P2: Documentation and release polish
-
-### Docs
+## Docs
 
 - [ ] Update README for rewrite architecture.
-- [ ] Document TOML config path: `~/.config/rack/config.toml`.
-- [ ] Document generated/cache config behaviour if present.
+- [ ] Document package layout.
+- [ ] Document TOML config path.
 - [ ] Document services config format.
-- [ ] Document hook SDK and proc metadata.
-- [ ] Document hook deploy layout under `~/.rack/hooks`.
-- [ ] Document CLI commands.
+- [ ] Document config migration if added.
+- [ ] Document service no-explicit-port model.
+- [ ] Document proxy host model.
+- [ ] Document `rack.local` hooks.
+- [ ] Document hook SDK.
+- [ ] Document proc macro metadata.
+- [ ] Document hook deploy layout.
+- [ ] Document CLI service commands.
+- [ ] Document CLI hook commands.
 - [ ] Document App Intents/Shortcuts.
 - [ ] Document URL scheme.
-- [ ] Document standard ports/DNS setup if restored.
+- [ ] Document standard ports/DNS if restored.
+- [ ] Document logs paths.
 
-### Build/release
+## Tests
 
-- [ ] Ensure app bundle includes Rust dynamic/static artifacts correctly.
-- [ ] Ensure CLI bundle/install works.
-- [ ] Ensure app icon/resources match main.
-- [ ] Ensure signing/notarization flow if applicable.
+- [ ] Add core config migration tests.
+- [ ] Add core config write/update tests.
+- [ ] Add core validation tests for any restored fields.
+- [ ] Add services lifecycle tests.
+- [ ] Add services restart tests.
+- [ ] Add services failed readiness tests.
+- [ ] Add services readiness timeout tests.
+- [ ] Add services env merge tests.
+- [ ] Add services log tests.
+- [ ] Add services FFI ABI tests.
+- [ ] Add proxy host tests.
+- [ ] Add proxy backend wait tests.
+- [ ] Add proxy loop detection tests.
+- [ ] Add proxy websocket frame tests.
+- [ ] Add proxy IPv6 tests if supported.
+- [ ] Add proxy HTTPS tests if supported.
+- [ ] Add hooks route normalization tests.
+- [ ] Add hooks glob tests.
+- [ ] Add hooks conflict tests.
+- [ ] Add hooks reserved path tests.
+- [ ] Add hooks request metadata tests.
+- [ ] Add hooks response normalization tests.
+- [ ] Add hooks timeout tests.
+- [ ] Add hooks malformed guest ABI tests.
+- [ ] Add hooks cron interval tests.
+- [ ] Add hooks cron calendar tests.
+- [ ] Add hooks logging tests.
+- [ ] Add CLI service integration tests.
+- [ ] Add CLI hook lifecycle tests.
+- [ ] Add Swift/manual QA checklist.
+- [ ] Test menu opens and displays services.
+- [ ] Test start/stop/restart from menu.
+- [ ] Test logs preview colours.
+- [ ] Test open logs in configured terminal.
+- [ ] Test Settings opens.
+- [ ] Test add/edit/remove service.
+- [ ] Test launch-at-login toggle.
+- [ ] Test App Intents before menu opens.
+- [ ] Test URL scheme actions.
+- [ ] Test quit cleanup.
+
+## Build / release
+
 - [ ] Add CI for `cargo test`.
-- [ ] Add CI for `make swift` or Swift build.
+- [ ] Add CI for `make swift`.
 - [ ] Add formatting checks.
 - [ ] Add release packaging smoke test.
+- [ ] Ensure app bundle layout is correct.
+- [ ] Ensure Rust artifacts are included correctly.
+- [ ] Ensure bundled CLI works.
+- [ ] Ensure CLI installer works.
+- [ ] Ensure app can run from `/Applications`.
+- [ ] Ensure launch-at-login works from built app bundle.
+- [ ] Ensure app sandbox/signing story is clear if applicable.
 
-### Cleanup
+## Cleanup
 
 - [ ] Decide what to do with untracked `packages/hooks/src/std/`.
-- [ ] Remove stale old concepts from UI, e.g. `standardPortsEnabled` AppStorage if replaced by TOML.
-- [ ] Remove dead hodge-podge FFI if replaced by cleaner bridge modules.
-- [ ] Keep package folders nested by responsibility.
-- [ ] Split any files that drift past maintainable size.
+- [ ] Remove stale old `standardPortsEnabled` AppStorage if replaced by TOML.
+- [ ] Remove stale old settings assumptions.
+- [ ] Remove any dead FFI hodge-podge once bridge is cleaned.
+- [ ] Split any large files that drift past maintainable size.
+- [ ] Keep proxy folders nested by responsibility.
+- [ ] Keep services folders nested by responsibility.
+- [ ] Keep hooks folders nested by responsibility.
+- [ ] Keep tests out of `src`.
 
----
+## Suggested next order
 
-## Suggested implementation order
-
-1. Settings window + service config CRUD UI/API.
-2. App lifecycle/AppDelegate + URL scheme + early AppIntent bridge.
-3. Restart FFI/UI/Intent.
-4. Service runtime failed/readiness states.
-5. Hook CLI list/remove/test.
-6. Hook request/response SDK parity.
-7. Cron calendar schedules + event payload.
-8. Proxy backend wait/loop detection/WebSocket verification.
-9. Standard ports/HTTPS/DNS if still in v1 scope.
-10. Config migration from main JSON if desired.
-11. Docs/release polish.
+- [ ] Build Settings shell from scratch.
+- [ ] Add config/service mutation APIs.
+- [ ] Add service add/edit/remove UI.
+- [ ] Add lifecycle owner/AppDelegate.
+- [ ] Add URL scheme.
+- [ ] Add restart end-to-end.
+- [ ] Add service failed/readiness states.
+- [ ] Add hook list/remove/test CLI.
+- [ ] Fill hook SDK request/response gaps.
+- [ ] Add cron calendar/event parity.
+- [ ] Verify/fix WebSocket proxying.
+- [ ] Decide standard ports/HTTPS scope.
+- [ ] Add docs/release polish.
