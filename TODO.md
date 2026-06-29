@@ -354,22 +354,22 @@ Keep in mind:
 ## Cron hooks
 
 - [ ] Keep interval schedules working.
-- [ ] Add calendar schedule parser if required.
-- [ ] Support `friday at 17:00` if required.
-- [ ] Support `weekdays at 9:30am` if required.
-- [ ] Port/reuse main schedule semantics where useful.
-- [ ] Add `CronEvent` argument support.
-- [ ] Include package in cron event.
-- [ ] Include hook id in cron event.
-- [ ] Include schedule in cron event.
-- [ ] Include scheduled-at timestamp in cron event.
+- [x] Add calendar schedule parser if required.
+- [x] Support `friday at 17:00` if required.
+- [x] Support `weekdays at 9:30am` if required.
+- [x] Port/reuse main schedule semantics where useful.
+- [x] Add `CronEvent` argument support.
+- [x] Include package in cron event.
+- [x] Include hook id in cron event.
+- [x] Include schedule in cron event.
+- [x] Include scheduled-at timestamp in cron event.
 - [ ] Log cron started.
 - [ ] Log cron finished.
 - [ ] Log cron errors.
 - [ ] Decide first-run semantics.
-- [ ] Add interval schedule tests.
-- [ ] Add calendar schedule tests.
-- [ ] Add cron event payload tests.
+- [x] Add interval schedule tests.
+- [x] Add calendar schedule tests.
+- [x] Add cron event payload tests.
 
 ## Hook CLI
 
@@ -378,7 +378,7 @@ Keep in mind:
 - [x] Add `rack hook remove`.
 - [x] Add `rack hook rm` alias.
 - [ ] Add `rack hook uninstall` alias if useful.
-- [ ] Add `rack hook test`.
+- [x] Add `rack hook test`.
 - [ ] Add `rack hook install` if deploy should not cover it.
 - [ ] Add `rack hook compile` alias if useful.
 - [ ] Add `rack fn ...` compatibility group if desired.
@@ -527,7 +527,7 @@ Keep in mind:
 - [ ] Add hooks timeout tests.
 - [ ] Add hooks malformed guest ABI tests.
 - [ ] Add hooks cron interval tests.
-- [ ] Add hooks cron calendar tests.
+- [x] Add hooks cron calendar tests.
 - [ ] Add hooks logging tests.
 - [ ] Add CLI service integration tests.
 - [x] Add CLI hook lifecycle tests.
@@ -580,7 +580,7 @@ Keep in mind:
 - [ ] Add service failed/readiness states.
 - [ ] Add hook list/remove/test CLI.
 - [ ] Fill hook SDK request/response gaps.
-- [ ] Add cron calendar/event parity.
+- [x] Add cron calendar/event parity.
 - [ ] Verify/fix WebSocket proxying.
 - [ ] Decide standard ports/HTTPS scope.
 - [ ] Add docs/release polish.
