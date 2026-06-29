@@ -5,10 +5,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use rack_hooks::{
-    dispatch, load_metadata, run_cron_wasm_with_event, CronEvent, HookRegistry, HookRequest,
-    WasmHookEndpoint,
-};
+use rack_hooks::HookRegistry;
 use rack_services::hooks::HookSummary;
 
 pub fn init(path: &str) -> Result<()> {
@@ -50,45 +47,6 @@ pub fn list() -> Result<()> {
 
     for summary in summaries {
         print_hook_summary(&summary);
-    }
-
-    Ok(())
-}
-
-pub fn test(path: &str, hook: Option<&str>, route: Option<&str>) -> Result<()> {
-    build(path)?;
-    let wasm_path = built_wasm_path(Path::new(path))?;
-    let wasm = fs::read(&wasm_path)
-        .with_context(|| format!("failed to read built wasm at {}", wasm_path.display()))?;
-    let metadata = load_metadata(&wasm)?;
-    let target = select_test_target(&metadata.hooks, hook, route)?;
-
-    match target {
-        TestTarget::Http { method, path } => {
-            let registry = HookRegistry::default();
-            registry.register_wasm(&wasm)?;
-            let response = dispatch(
-                &registry,
-                &HookRequest::new(method, path.clone(), "rack.local"),
-            );
-            println!("HTTP {}", response.status);
-            for (name, value) in response.headers {
-                println!("{name}: {value}");
-            }
-            if !response.body.is_empty() {
-                println!();
-                print!("{}", String::from_utf8_lossy(&response.body));
-            }
-        }
-        TestTarget::Cron {
-            id,
-            entry,
-            schedule,
-        } => {
-            let event = CronEvent::new("local", id.clone(), schedule, chrono_like_timestamp());
-            run_cron_wasm_with_event(&wasm, &entry, &event)?;
-            println!("Cron {id} completed");
-        }
     }
 
     Ok(())
@@ -136,134 +94,6 @@ pub fn remove(name: &str) -> Result<()> {
 
     println!("Removed hook `{name}` from {}", hooks_dir()?.display());
     Ok(())
-}
-
-enum TestTarget {
-    Http {
-        method: String,
-        path: String,
-    },
-    Cron {
-        id: String,
-        entry: String,
-        schedule: String,
-    },
-}
-
-fn select_test_target(
-    hooks: &[WasmHookEndpoint],
-    hook: Option<&str>,
-    route: Option<&str>,
-) -> Result<TestTarget> {
-    if hook.is_some() && route.is_some() {
-        bail!("use either --hook or --route, not both");
-    }
-
-    if let Some(route) = route {
-        let route = normalize_route(route);
-        return hooks
-            .iter()
-            .find_map(|endpoint| match endpoint {
-                WasmHookEndpoint::Http { method, path, .. } if *path == route => {
-                    Some(TestTarget::Http {
-                        method: method.clone(),
-                        path: path.clone(),
-                    })
-                }
-                _ => None,
-            })
-            .ok_or_else(|| anyhow::anyhow!("unknown route `{route}`"));
-    }
-
-    if let Some(id) = hook {
-        return hooks
-            .iter()
-            .find_map(|endpoint| match endpoint {
-                WasmHookEndpoint::Http {
-                    id: endpoint_id,
-                    method,
-                    path,
-                    ..
-                } if endpoint_id == id => Some(TestTarget::Http {
-                    method: method.clone(),
-                    path: path.clone(),
-                }),
-                WasmHookEndpoint::Cron {
-                    id: endpoint_id,
-                    entry,
-                    schedule,
-                } if endpoint_id == id => Some(TestTarget::Cron {
-                    id: endpoint_id.clone(),
-                    entry: entry.clone(),
-                    schedule: schedule.clone(),
-                }),
-                _ => None,
-            })
-            .ok_or_else(|| anyhow::anyhow!("unknown hook `{id}`"));
-    }
-
-    hooks
-        .iter()
-        .find_map(|endpoint| match endpoint {
-            WasmHookEndpoint::Http { method, path, .. } => Some(TestTarget::Http {
-                method: method.clone(),
-                path: path.clone(),
-            }),
-            _ => None,
-        })
-        .or_else(|| {
-            hooks.iter().find_map(|endpoint| match endpoint {
-                WasmHookEndpoint::Cron {
-                    id,
-                    entry,
-                    schedule,
-                } => Some(TestTarget::Cron {
-                    id: id.clone(),
-                    entry: entry.clone(),
-                    schedule: schedule.clone(),
-                }),
-                _ => None,
-            })
-        })
-        .ok_or_else(|| anyhow::anyhow!("hook metadata contains no routes or crons"))
-}
-
-fn built_wasm_path(path: &Path) -> Result<PathBuf> {
-    let release_dir = path.join("target/wasm32-unknown-unknown/release");
-    let mut matches = fs::read_dir(&release_dir)
-        .with_context(|| format!("missing build output directory {}", release_dir.display()))?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|extension| extension == "wasm")
-        })
-        .collect::<Vec<_>>();
-    matches.sort();
-
-    match matches.as_slice() {
-        [path] => Ok(path.clone()),
-        [] => bail!("no wasm artifact found in {}", release_dir.display()),
-        _ => bail!(
-            "multiple wasm artifacts found in {}; cannot choose",
-            release_dir.display()
-        ),
-    }
-}
-
-fn normalize_route(route: &str) -> String {
-    if route.starts_with('/') {
-        route.to_string()
-    } else {
-        format!("/{route}")
-    }
-}
-
-fn chrono_like_timestamp() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or_default()
 }
 
 fn hooks_dir() -> Result<PathBuf> {

@@ -1,4 +1,5 @@
 mod hook;
+mod hook_test;
 mod service;
 
 use anyhow::Result;
@@ -71,7 +72,7 @@ fn run_hook(command: HookCommand) -> Result<()> {
         HookCommand::Init { path } => hook::init(&path),
         HookCommand::Build { path } => hook::build(path.as_deref().unwrap_or(".")),
         HookCommand::Deploy { path } => hook::deploy(path.as_deref().unwrap_or(".")),
-        HookCommand::Test { path, hook, route } => hook::test(
+        HookCommand::Test { path, hook, route } => hook_test::run(
             path.as_deref().unwrap_or("."),
             hook.as_deref(),
             route.as_deref(),
