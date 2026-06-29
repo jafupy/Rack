@@ -180,7 +180,10 @@ fn instantiate(
                 return;
             };
             let data = memory.data(&caller);
-            if let Some(bytes) = data.get(start..start + len) {
+            let Some(end) = start.checked_add(len) else {
+                return;
+            };
+            if let Some(bytes) = data.get(start..end) {
                 eprintln!("{}", String::from_utf8_lossy(bytes));
             }
         },
@@ -203,9 +206,12 @@ fn write_memory(
     data: &[u8],
 ) -> Result<(), RuntimeError> {
     let start = usize::try_from(ptr).map_err(|_| RuntimeError::MemoryBounds)?;
+    let end = start
+        .checked_add(data.len())
+        .ok_or(RuntimeError::MemoryBounds)?;
     memory
         .data_mut(store)
-        .get_mut(start..start + data.len())
+        .get_mut(start..end)
         .ok_or(RuntimeError::MemoryBounds)?
         .copy_from_slice(data);
     Ok(())
@@ -220,8 +226,9 @@ fn read_memory(
     let start = usize::try_from(ptr).map_err(|_| RuntimeError::MemoryBounds)?;
     let len = usize::try_from(len).map_err(|_| RuntimeError::MemoryBounds)?;
     let data = memory.data(store);
+    let end = start.checked_add(len).ok_or(RuntimeError::MemoryBounds)?;
     Ok(data
-        .get(start..start + len)
+        .get(start..end)
         .ok_or(RuntimeError::MemoryBounds)?
         .to_vec())
 }

@@ -54,6 +54,22 @@ impl Response {
         })
     }
 
+    pub fn ok(body: impl Into<String>) -> Self {
+        Self::text(body)
+    }
+
+    pub fn created(body: impl Into<String>) -> Self {
+        Self::text(body).status(201)
+    }
+
+    pub fn bad_request(body: impl Into<String>) -> Self {
+        Self::text(body).status(400)
+    }
+
+    pub fn teapot(body: impl Into<String>) -> Self {
+        Self::text(body).status(418)
+    }
+
     pub fn text(body: impl Into<String>) -> Self {
         Self::new(200, body.into()).header("content-type", "text/plain; charset=utf-8")
     }
@@ -65,6 +81,10 @@ impl Response {
     pub fn json(value: impl Serialize) -> Result<Self> {
         let body = serde_json::to_vec(&value)?;
         Ok(Self::new(200, body).header("content-type", "application/json"))
+    }
+
+    pub fn csv(body: impl Into<String>) -> Self {
+        Self::new(200, body.into()).header("content-type", "text/csv; charset=utf-8")
     }
 
     pub fn bytes(body: impl Into<Vec<u8>>) -> Self {

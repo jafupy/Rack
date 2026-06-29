@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use crate::runtime::{HookRuntime, RuntimeError};
-use crate::{HookRequest, HookResponse};
+use crate::{normalize_path, HookRequest, HookResponse};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HookEndpoint {
@@ -15,7 +15,7 @@ impl HookEndpoint {
         Self {
             id: id.into(),
             method: method.into().to_ascii_uppercase(),
-            path: path.into(),
+            path: normalize_path(&path.into()),
         }
     }
 }

@@ -4,7 +4,7 @@ mod router;
 use serde::{Deserialize, Serialize};
 
 pub use registry::{HookEndpoint, HookRegistry};
-pub use router::route;
+pub use router::{is_reserved_path, normalize_path, route, RouteError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HookRequest {
@@ -112,8 +112,13 @@ impl std::fmt::Display for InvalidHookResponse {
 impl std::error::Error for InvalidHookResponse {}
 
 pub fn dispatch(registry: &HookRegistry, request: &HookRequest) -> HookResponse {
-    let Some(endpoint) = route(registry, request) else {
-        return HookResponse::text(404, "hook not found\n");
+    let endpoint = match route(registry, request) {
+        Ok(Some(endpoint)) => endpoint,
+        Ok(None) => return HookResponse::text(404, "hook not found\n"),
+        Err(RouteError::Conflict { .. }) => {
+            return HookResponse::text(409, "conflicting hook route\n")
+        }
+        Err(RouteError::ReservedPath(_)) => return HookResponse::text(404, "hook not found\n"),
     };
 
     match registry.run(&endpoint, request) {

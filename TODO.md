@@ -257,8 +257,8 @@ Keep in mind:
 
 ## Hooks runtime
 
-- [ ] Keep embedded WASM metadata as source of truth.
-- [ ] Do not go back to mandatory `manifest.toml`.
+- [x] Keep embedded WASM metadata as source of truth.
+- [x] Do not go back to mandatory `manifest.toml`.
 - [ ] Add package identity metadata if needed.
 - [ ] Add package version metadata if needed.
 - [ ] Add route IDs if needed.
@@ -272,9 +272,9 @@ Keep in mind:
 - [ ] Validate cron entry exports.
 - [ ] Add timeout/fuel/epoch interruption for in-process Wasmtime.
 - [ ] Prevent hanging hooks from blocking runtime threads forever.
-- [ ] Harden guest pointer/length handling.
-- [ ] Use checked arithmetic for pointer + length.
-- [ ] Handle negative guest lengths safely.
+- [x] Harden guest pointer/length handling.
+- [x] Use checked arithmetic for pointer + length.
+- [x] Handle negative guest lengths safely.
 - [ ] Review `rack_alloc` / `rack_dealloc` ABI pairing.
 - [ ] Add malformed guest output tests.
 - [ ] Add hook started/finished/duration logging.
@@ -286,14 +286,14 @@ Keep in mind:
 
 ## Hook HTTP routing
 
-- [ ] Normalize leading slash.
+- [x] Normalize leading slash.
 - [ ] Decide trailing slash semantics.
-- [ ] Reject `/` if still reserved.
-- [ ] Reject `/_*` if still reserved.
+- [x] Reject `/` if still reserved.
+- [x] Reject `/_*` if still reserved.
 - [ ] Add glob route support if still needed.
 - [ ] Choose most specific route.
-- [ ] Detect equal-specificity conflicts.
-- [ ] Return useful route conflict errors.
+- [x] Detect equal-specificity conflicts.
+- [x] Return useful route conflict errors.
 - [ ] Inject route metadata into request.
 - [ ] Include package in request metadata.
 - [ ] Include route id in request metadata.
@@ -301,9 +301,9 @@ Keep in mind:
 - [ ] Include matched path in request metadata.
 - [ ] Align no-route 404 behaviour.
 - [ ] Align conflict 409 behaviour if applicable.
-- [ ] Add route normalization tests.
+- [x] Add route normalization tests.
 - [ ] Add glob tests.
-- [ ] Add route conflict tests.
+- [x] Add route conflict tests.
 - [ ] Add route metadata tests.
 
 ## Hook SDK
@@ -333,14 +333,14 @@ Keep in mind:
 - [x] Validate response status `100..=599`.
 - [ ] Normalize response headers.
 - [ ] Decide duplicate response header behaviour.
-- [ ] Add response helpers: `ok`.
-- [ ] Add response helpers: `created`.
-- [ ] Add response helpers: `bad_request`.
-- [ ] Add response helpers: `teapot`.
+- [x] Add response helpers: `ok`.
+- [x] Add response helpers: `created`.
+- [x] Add response helpers: `bad_request`.
+- [x] Add response helpers: `teapot`.
 - [x] Add response helpers: `server_error`.
 - [x] Add response builder `.text()`.
 - [x] Add response builder `.html()`.
-- [ ] Add response builder `.csv()`.
+- [x] Add response builder `.csv()`.
 - [x] Add response builder `.json()`.
 - [x] Add response builder `.bytes()`.
 - [x] Align text content type/charset with main.
@@ -518,10 +518,10 @@ Keep in mind:
 - [x] Add proxy websocket frame tests.
 - [ ] Add proxy IPv6 tests if supported.
 - [ ] Add proxy HTTPS tests if supported.
-- [ ] Add hooks route normalization tests.
+- [x] Add hooks route normalization tests.
 - [ ] Add hooks glob tests.
-- [ ] Add hooks conflict tests.
-- [ ] Add hooks reserved path tests.
+- [x] Add hooks conflict tests.
+- [x] Add hooks reserved path tests.
 - [x] Add hooks request metadata tests.
 - [x] Add hooks response normalization tests.
 - [ ] Add hooks timeout tests.

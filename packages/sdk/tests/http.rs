@@ -47,6 +47,22 @@ fn validates_response_statuses() {
 }
 
 #[test]
+fn builds_helper_responses() {
+    assert_eq!(Response::ok("ok").status, 200);
+    assert_eq!(Response::created("ok").status, 201);
+    assert_eq!(Response::bad_request("bad").status, 400);
+    assert_eq!(Response::teapot("short").status, 418);
+
+    let csv = Response::csv("a,b\n");
+    assert_eq!(csv.status, 200);
+    assert_eq!(
+        csv.headers,
+        [("content-type".into(), "text/csv; charset=utf-8".into())]
+    );
+    assert_eq!(csv.body, b"a,b\n");
+}
+
+#[test]
 fn builds_json_responses() {
     #[derive(Serialize)]
     struct Payload<'a> {

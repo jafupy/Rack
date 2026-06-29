@@ -1,5 +1,6 @@
 mod dispatch;
 
 pub use dispatch::{
-    dispatch, HookEndpoint, HookRegistry, HookRequest, HookResponse, InvalidHookResponse,
+    dispatch, is_reserved_path, normalize_path, HookEndpoint, HookRegistry, HookRequest,
+    HookResponse, InvalidHookResponse,
 };

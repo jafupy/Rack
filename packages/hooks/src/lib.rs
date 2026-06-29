@@ -4,7 +4,8 @@ pub mod runtime;
 
 pub use cron::CronEvent;
 pub use http::{
-    dispatch, HookEndpoint, HookRegistry, HookRequest, HookResponse, InvalidHookResponse,
+    dispatch, is_reserved_path, normalize_path, HookEndpoint, HookRegistry, HookRequest,
+    HookResponse, InvalidHookResponse,
 };
 pub use runtime::{
     load_metadata, run_cron_wasm, run_cron_wasm_with_event, HookModuleMetadata, HookRuntime,

@@ -1,4 +1,4 @@
-use rack_hooks::{dispatch, HookEndpoint, HookRegistry, HookRequest, HookResponse};
+use rack_hooks::{dispatch, normalize_path, HookEndpoint, HookRegistry, HookRequest, HookResponse};
 
 #[test]
 fn dispatch_returns_not_found_without_matching_hook() {
@@ -53,4 +53,56 @@ fn registry_removes_hooks_by_id() {
     let response = dispatch(&registry, &HookRequest::new("GET", "/hello", "rack.local"));
 
     assert_eq!(response.status, 404);
+}
+
+#[test]
+fn routes_normalize_leading_slashes() {
+    let registry = HookRegistry::new([HookEndpoint::new("hello", "GET", "hello")]);
+
+    let response = dispatch(&registry, &HookRequest::new("GET", "/hello", "rack.local"));
+
+    assert_eq!(response.status, 501);
+    assert_eq!(normalize_path("hello"), "/hello");
+}
+
+#[test]
+fn routes_strip_query_before_matching() {
+    let registry = HookRegistry::new([HookEndpoint::new("hello", "GET", "/hello")]);
+
+    let response = dispatch(
+        &registry,
+        &HookRequest::new("GET", "/hello?name=rack", "rack.local"),
+    );
+
+    assert_eq!(response.status, 501);
+}
+
+#[test]
+fn root_and_internal_hook_paths_are_reserved() {
+    let registry = HookRegistry::new([
+        HookEndpoint::new("root", "GET", "/"),
+        HookEndpoint::new("internal", "GET", "/_health"),
+    ]);
+
+    let root = dispatch(&registry, &HookRequest::new("GET", "/", "rack.local"));
+    let internal = dispatch(
+        &registry,
+        &HookRequest::new("GET", "/_health", "rack.local"),
+    );
+
+    assert_eq!(root.status, 404);
+    assert_eq!(internal.status, 404);
+}
+
+#[test]
+fn duplicate_exact_routes_return_conflict() {
+    let registry = HookRegistry::new([
+        HookEndpoint::new("one", "GET", "/hello"),
+        HookEndpoint::new("two", "GET", "/hello"),
+    ]);
+
+    let response = dispatch(&registry, &HookRequest::new("GET", "/hello", "rack.local"));
+
+    assert_eq!(response.status, 409);
+    assert_eq!(response.body, b"conflicting hook route\n");
 }
