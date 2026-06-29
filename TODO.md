@@ -40,32 +40,32 @@ Keep in mind:
 
 ## App / macOS shell
 
-- [ ] Add a real app lifecycle owner in `packages/mac`.
-- [ ] Add `AppDelegate` or equivalent.
-- [ ] Keep app lifecycle out of SwiftUI views.
-- [ ] Initialize runtime/model before menu UI appears.
-- [ ] Initialize App Intent bridge before any shortcut can run.
-- [ ] Move `RackIntentBridge.model = model` out of the menu `.task`.
-- [ ] Handle app termination.
-- [ ] Call runtime shutdown on termination.
+- [x] Add a real app lifecycle owner in `packages/mac`.
+- [x] Add `AppDelegate` or equivalent.
+- [x] Keep app lifecycle out of SwiftUI views.
+- [x] Initialize runtime/model before menu UI appears.
+- [x] Initialize App Intent bridge before any shortcut can run.
+- [x] Move `RackIntentBridge.model = model` out of the menu `.task`.
+- [x] Handle app termination.
+- [x] Call runtime shutdown on termination.
 - [ ] Decide whether app termination stops all running services.
 - [ ] Ensure Quit button and normal app quit share shutdown semantics.
-- [ ] Add `rack://` URL scheme to app bundle.
-- [ ] Add URL handling in mac package.
-- [ ] Add `rack://settings`.
-- [ ] Add `rack://service/start?id=...`.
-- [ ] Add `rack://service/stop?id=...`.
-- [ ] Add `rack://service/restart?id=...`.
-- [ ] Add `rack://service/stop-all`.
-- [ ] Add `rack://hooks/reload`.
+- [x] Add `rack://` URL scheme to app bundle.
+- [x] Add URL handling in mac package.
+- [x] Add `rack://settings`.
+- [x] Add `rack://service/start?id=...`.
+- [x] Add `rack://service/stop?id=...`.
+- [x] Add `rack://service/restart?id=...`.
+- [x] Add `rack://service/stop-all`.
+- [x] Add `rack://hooks/reload`.
 - [ ] Add compat handling for old `rack://server/...` URLs if desired.
 - [ ] Add compat handling for old `rack://functions/reload` if desired.
-- [ ] Restore bundled CLI installer.
-- [ ] Link bundled CLI to `~/.local/bin/rack`.
+- [x] Restore bundled CLI installer.
+- [x] Link bundled CLI to `~/.local/bin/rack`.
 - [ ] Add `~/.local/bin` to user shell profile when safe.
-- [ ] Handle existing non-symlink `rack` safely.
-- [ ] Surface CLI install errors quietly and usefully.
-- [ ] Ensure app bundle includes CLI resource.
+- [x] Handle existing non-symlink `rack` safely.
+- [x] Surface CLI install errors quietly and usefully.
+- [x] Ensure app bundle includes CLI resource.
 - [ ] Ensure app bundle includes correct Rust library/binary artifacts.
 - [ ] Restore app icon/resources if missing.
 - [ ] Revisit signing/notarization flow.
@@ -84,20 +84,20 @@ Keep in mind:
 - [x] Add Services page.
 - [x] Add Hooks page.
 - [ ] Add Network/Ports page if that feels cleaner than General.
-- [ ] Wire menu bar gear button to open Settings.
+- [x] Wire menu bar gear button to open Settings.
 - [x] Wire “Add Service” empty-state/menu action to open Settings or add-service flow.
 - [x] Make Settings usable without menu bar popover state.
-- [ ] Add launch-at-login toggle.
-- [ ] Show launch-at-login status/errors.
-- [ ] Add terminal picker.
-- [ ] Support Ghostty.
-- [ ] Support Terminal.app.
-- [ ] Support iTerm/iTerm2.
-- [ ] Support Warp/default `.command` fallback.
-- [ ] Persist terminal selection through Rack config, not stale `@AppStorage`.
-- [ ] Show config path.
-- [ ] Add reveal config in Finder.
-- [ ] Add open config in editor/default app.
+- [x] Add launch-at-login toggle.
+- [x] Show launch-at-login status/errors.
+- [x] Add terminal picker.
+- [x] Support Ghostty.
+- [x] Support Terminal.app.
+- [x] Support iTerm/iTerm2.
+- [x] Support Warp/default `.command` fallback.
+- [x] Persist terminal selection through Rack config, not stale `@AppStorage`.
+- [x] Show config path.
+- [x] Add reveal config in Finder.
+- [x] Add open config in editor/default app.
 - [ ] Add reload config action if safe.
 - [ ] Show config parse errors.
 - [ ] Add standard ports toggle once runtime support exists.
@@ -228,13 +228,13 @@ Keep in mind:
 - [ ] Decide whether nested subdomain fallback is required.
 - [ ] Support `fix-auth.myapp.localhost -> myapp` if required.
 - [ ] Otherwise document nested localhost rejection.
-- [ ] Add backend wait/retry while service is starting.
-- [ ] Restore loopback proxy loop detection.
-- [ ] Return useful `508 Loop Detected` response when needed.
+- [x] Add backend wait/retry while service is starting.
+- [x] Restore loopback proxy loop detection.
+- [x] Return useful `508 Loop Detected` response when needed.
 - [ ] Add clear error for unknown service host.
 - [ ] Add clear error for service known but not running.
 - [ ] Add clear error for backend connection failure.
-- [ ] Verify WebSocket frame tunnelling, not just upgrade headers.
+- [x] Verify WebSocket frame tunnelling, not just upgrade headers.
 - [ ] Add explicit WebSocket tunnel if Pingora path is insufficient.
 - [ ] Test Vite HMR.
 - [ ] Test Bun dev server websockets.
@@ -322,31 +322,31 @@ Keep in mind:
 - [ ] Restore `?` support in handlers.
 - [ ] Map bad payload to 400.
 - [ ] Map handler errors to 500.
-- [ ] Expose request method.
-- [ ] Expose request path.
-- [ ] Expose full URI/query.
-- [ ] Expose host.
-- [ ] Expose headers.
-- [ ] Expose `header(name)` helper.
-- [ ] Expose body.
+- [x] Expose request method.
+- [x] Expose request path.
+- [x] Expose full URI/query.
+- [x] Expose host.
+- [x] Expose headers.
+- [x] Expose `header(name)` helper.
+- [x] Expose body.
 - [ ] Expose route metadata.
-- [ ] Validate response status `100..=599`.
+- [x] Validate response status `100..=599`.
 - [ ] Normalize response headers.
 - [ ] Decide duplicate response header behaviour.
 - [ ] Add response helpers: `ok`.
 - [ ] Add response helpers: `created`.
 - [ ] Add response helpers: `bad_request`.
 - [ ] Add response helpers: `teapot`.
-- [ ] Add response helpers: `server_error`.
-- [ ] Add response builder `.text()`.
-- [ ] Add response builder `.html()`.
+- [x] Add response helpers: `server_error`.
+- [x] Add response builder `.text()`.
+- [x] Add response builder `.html()`.
 - [ ] Add response builder `.csv()`.
-- [ ] Add response builder `.json()`.
-- [ ] Add response builder `.bytes()`.
-- [ ] Align text content type/charset with main.
-- [ ] Restore `rack::log::info`.
-- [ ] Restore `rack::log::warn`.
-- [ ] Restore `rack::log::error`.
+- [x] Add response builder `.json()`.
+- [x] Add response builder `.bytes()`.
+- [x] Align text content type/charset with main.
+- [x] Restore `rack::log::info`.
+- [x] Restore `rack::log::warn`.
+- [x] Restore `rack::log::error`.
 - [ ] Restore `rack::fs!` if still part of public SDK.
 - [ ] Add SDK compile tests.
 - [ ] Add macro invalid-signature tests.
@@ -455,7 +455,7 @@ Keep in mind:
 - [ ] Add config mutation FFI.
 - [ ] Add restart FFI.
 - [x] Add failed-state FFI.
-- [ ] Add config path FFI.
+- [x] Add config path FFI.
 - [ ] Add hook reload FFI when real reload exists.
 - [ ] Add hook summaries/errors FFI improvements.
 - [ ] Avoid returning dangling pointers.
@@ -513,17 +513,17 @@ Keep in mind:
 - [ ] Add services log tests.
 - [ ] Add services FFI ABI tests.
 - [ ] Add proxy host tests.
-- [ ] Add proxy backend wait tests.
-- [ ] Add proxy loop detection tests.
-- [ ] Add proxy websocket frame tests.
+- [x] Add proxy backend wait tests.
+- [x] Add proxy loop detection tests.
+- [x] Add proxy websocket frame tests.
 - [ ] Add proxy IPv6 tests if supported.
 - [ ] Add proxy HTTPS tests if supported.
 - [ ] Add hooks route normalization tests.
 - [ ] Add hooks glob tests.
 - [ ] Add hooks conflict tests.
 - [ ] Add hooks reserved path tests.
-- [ ] Add hooks request metadata tests.
-- [ ] Add hooks response normalization tests.
+- [x] Add hooks request metadata tests.
+- [x] Add hooks response normalization tests.
 - [ ] Add hooks timeout tests.
 - [ ] Add hooks malformed guest ABI tests.
 - [ ] Add hooks cron interval tests.
@@ -551,8 +551,8 @@ Keep in mind:
 - [ ] Add release packaging smoke test.
 - [ ] Ensure app bundle layout is correct.
 - [ ] Ensure Rust artifacts are included correctly.
-- [ ] Ensure bundled CLI works.
-- [ ] Ensure CLI installer works.
+- [x] Ensure bundled CLI works.
+- [x] Ensure CLI installer works.
 - [ ] Ensure app can run from `/Applications`.
 - [ ] Ensure launch-at-login works from built app bundle.
 - [ ] Ensure app sandbox/signing story is clear if applicable.
