@@ -140,14 +140,14 @@ Keep in mind:
 - [ ] Keep `host` mapping to `<host>.localhost`.
 - [ ] Keep `working_dir`.
 - [ ] Keep `auto_start`.
-- [ ] Add config migration if old JSON config should be imported automatically.
-- [ ] Map old `config.json` services to new TOML where possible.
-- [ ] Preserve existing users’ service definitions where possible.
-- [ ] Keep normal load from source TOML read-only.
-- [ ] Keep generated/backfilled cache separate if needed.
+- [x] Add config migration if old JSON config should be imported automatically.
+- [x] Map old `config.json` services to new TOML where possible.
+- [x] Preserve existing users’ service definitions where possible.
+- [x] Keep normal load from source TOML read-only.
+- [x] Keep generated/backfilled cache separate if needed.
 - [ ] Add validation for any restored fields.
-- [ ] Add config write/update APIs.
-- [ ] Preserve nice TOML formatting when writing.
+- [x] Add config write/update APIs.
+- [x] Preserve nice TOML formatting when writing.
 - [ ] Expose config path over FFI/control API.
 - [ ] Expose config parse/validation errors to UI.
 
@@ -482,11 +482,11 @@ Keep in mind:
 
 ## Docs
 
-- [ ] Update README for rewrite architecture.
-- [ ] Document package layout.
-- [ ] Document TOML config path.
-- [ ] Document services config format.
-- [ ] Document config migration if added.
+- [x] Update README for rewrite architecture.
+- [x] Document package layout.
+- [x] Document TOML config path.
+- [x] Document services config format.
+- [x] Document config migration if added.
 - [ ] Document service no-explicit-port model.
 - [ ] Document proxy host model.
 - [ ] Document `rack.local` hooks.
@@ -502,8 +502,8 @@ Keep in mind:
 
 ## Tests
 
-- [ ] Add core config migration tests.
-- [ ] Add core config write/update tests.
+- [x] Add core config migration tests.
+- [x] Add core config write/update tests.
 - [ ] Add core validation tests for any restored fields.
 - [ ] Add services lifecycle tests.
 - [ ] Add services restart tests.
