@@ -5,6 +5,9 @@ public struct ServiceConfiguration: Identifiable, Equatable {
   public let name: String
   public let command: String
   public let arguments: String
+  public let host: String
+  public let workingDir: String
+  public let autoStart: Bool
   public let localURL: String
   public let status: ServiceStatus
 
@@ -14,6 +17,8 @@ public struct ServiceConfiguration: Identifiable, Equatable {
     command: String,
     arguments: String = "",
     host: String,
+    workingDir: String = "",
+    autoStart: Bool = false,
     proxyPort: UInt16? = nil,
     status: ServiceStatus
   ) {
@@ -21,6 +26,9 @@ public struct ServiceConfiguration: Identifiable, Equatable {
     self.name = name
     self.command = command
     self.arguments = arguments
+    self.host = host
+    self.workingDir = workingDir
+    self.autoStart = autoStart
     if let proxyPort {
       self.localURL = "http://\(host).localhost:\(proxyPort)"
     } else {

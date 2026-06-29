@@ -103,6 +103,8 @@ extension ServiceConfiguration {
       name: RackBridge.string(service.name),
       command: RackBridge.string(service.run),
       host: RackBridge.string(service.host),
+      workingDir: RackBridge.string(service.workingDir),
+      autoStart: service.autoStart == 1,
       proxyPort: proxyPort,
       status: ServiceStatus(service)
     )

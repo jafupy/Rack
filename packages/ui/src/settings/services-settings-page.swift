@@ -1,27 +1,35 @@
 import SwiftUI
 
 struct ServicesSettingsPage: View {
+  @EnvironmentObject private var model: RackViewModel
+
   let services: [ServiceConfiguration]
+
+  @State private var editor: ServiceEditorState?
+  @State private var serviceToDelete: ServiceConfiguration?
 
   var body: some View {
     SettingsPageLayout {
       SettingsSectionHeader(
         title: "Services",
-        subtitle:
-          "View configured services. Create, edit, and delete controls are placeholders until CRUD APIs exist."
+        subtitle: "Add, edit, remove, and inspect Rack services."
       )
 
       if services.isEmpty {
         PlaceholderCard(
           systemImage: "plus.app",
           title: "No services configured",
-          message: "Use this page to add services once configuration mutation is implemented."
+          message: "Add a service to route it through Rack."
         )
       } else {
         SettingsCard {
           VStack(spacing: 0) {
             ForEach(Array(services.enumerated()), id: \.element.id) { index, service in
-              ServiceSettingsRow(service: service)
+              ServiceSettingsRow(
+                service: service,
+                onEdit: { editor = .edit(service.definition) },
+                onDelete: { serviceToDelete = service }
+              )
               if index < services.count - 1 {
                 Divider()
               }
@@ -31,73 +39,56 @@ struct ServicesSettingsPage: View {
       }
 
       Button {
+        editor = .add(.emptyDraft)
       } label: {
         Label("Add Service", systemImage: "plus")
       }
-      .disabled(true)
-      .help("Service creation is not available until config mutation APIs exist.")
+      .buttonStyle(.borderedProminent)
     }
-  }
-}
-
-private struct ServiceSettingsRow: View {
-  let service: ServiceConfiguration
-
-  var body: some View {
-    HStack(alignment: .top, spacing: 12) {
-      Image(systemName: statusImage)
-        .foregroundStyle(statusColor)
-        .frame(width: 20)
-
-      VStack(alignment: .leading, spacing: 4) {
-        Text(service.name.isEmpty ? "Unnamed service" : service.name)
-          .font(.headline)
-        Text(commandLabel.isEmpty ? "No command configured" : commandLabel)
-          .font(.system(.caption, design: .monospaced))
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
-        Text(service.localURL)
-          .font(.caption)
-          .foregroundStyle(.tertiary)
+    .sheet(item: $editor) { editor in
+      ServiceEditorSheet(
+        mode: editor.mode,
+        service: editor.service,
+        onCancel: { self.editor = nil },
+        onSave: save
+      )
+    }
+    .alert("Remove Service?", isPresented: deleteAlertPresented) {
+      Button("Remove", role: .destructive) {
+        if let serviceToDelete {
+          model.removeService(id: serviceToDelete.id)
+        }
+        serviceToDelete = nil
       }
-
-      Spacer()
-
-      Text(statusLabel)
-        .font(.caption.weight(.medium))
-        .foregroundStyle(statusColor)
-    }
-    .padding(.vertical, 12)
-  }
-
-  private var commandLabel: String {
-    [service.command, service.arguments].filter { !$0.isEmpty }.joined(separator: " ")
-  }
-
-  private var statusLabel: String {
-    switch service.status {
-    case .stopped: "Stopped"
-    case .starting: "Starting"
-    case .running: "Running"
-    case .failed: "Failed"
+      Button("Cancel", role: .cancel) {
+        serviceToDelete = nil
+      }
+    } message: {
+      Text(deleteMessage)
     }
   }
 
-  private var statusImage: String {
-    switch service.status {
-    case .stopped: "circle"
-    case .starting: "clock"
-    case .running: "play.circle.fill"
-    case .failed: "exclamationmark.triangle.fill"
-    }
+  private var deleteAlertPresented: Binding<Bool> {
+    Binding(
+      get: { serviceToDelete != nil },
+      set: { if !$0 { serviceToDelete = nil } }
+    )
   }
 
-  private var statusColor: Color {
-    switch service.status {
-    case .stopped: .secondary
-    case .starting: .orange
-    case .running: .green
-    case .failed: .red
+  private var deleteMessage: String {
+    guard let service = serviceToDelete else { return "" }
+    return "Remove \(service.name.isEmpty ? service.id : service.name) from Rack?"
+  }
+
+  private func save(_ service: ServiceDefinition) {
+    switch editor?.mode {
+    case .add:
+      model.addService(service)
+    case .edit:
+      model.editService(id: service.id, service: service)
+    case .none:
+      break
     }
+    editor = nil
   }
 }
