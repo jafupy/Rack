@@ -1,7 +1,8 @@
 use std::{fs, path::PathBuf};
 
 use rack_core::config::{
-    add_service, remove_service, replace_service, save_at, Config, Service, WriteError,
+    add_service, remove_service, replace_service, save_at, set_terminal, Config, Service,
+    WriteError,
 };
 
 #[test]
@@ -15,6 +16,26 @@ fn writes_source_config_with_schema_header() {
     assert!(output.starts_with("# RACK:V1\n\n"));
     assert!(output.contains("[[services]]"));
     assert!(output.contains("host = \"api\""));
+}
+
+#[test]
+fn updates_terminal_in_memory() {
+    let mut config = config();
+
+    set_terminal(&mut config, "Terminal").unwrap();
+
+    assert_eq!(config.terminal, "Terminal");
+}
+
+#[test]
+fn rejects_blank_terminal_without_mutating_config() {
+    let mut config = config();
+    let before = config.clone();
+
+    let error = set_terminal(&mut config, "   ").unwrap_err();
+
+    assert!(matches!(error, WriteError::BlankTerminal));
+    assert_eq!(config, before);
 }
 
 #[test]

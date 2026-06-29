@@ -72,7 +72,19 @@ final class RackServicesClient: RackRuntimeClient {
 
   func openInTerminal(id: String) {
     guard let path = logFilePath(for: id) else { return }
-    openLogInTerminal(path: path, id: id)
+    openLogInTerminal(path: path, id: id, appName: terminalName())
+  }
+
+  func configPath() -> String? {
+    try? RackBridge.value(rackServicesConfigPath())
+  }
+
+  func terminalName() -> String {
+    (try? RackBridge.value(rackServicesTerminal())) ?? "Ghostty"
+  }
+
+  func setTerminalName(_ terminal: String) throws {
+    try terminal.withCString { try RackBridge.check(rackServicesSetTerminal($0)) }
   }
 
   private func encodeService(_ service: ServiceDefinition) throws -> String {

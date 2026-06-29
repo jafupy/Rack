@@ -4,9 +4,17 @@ import SwiftUI
 public struct RackSettingsView: View {
   @EnvironmentObject private var model: RackViewModel
   @State private var selectedSection: SettingsSection
+  private let generalState: GeneralSettingsState
+  private let generalActions: GeneralSettingsActions
 
-  public init(initialSection: SettingsSection = .general) {
+  public init(
+    initialSection: SettingsSection = .general,
+    generalState: GeneralSettingsState = GeneralSettingsState(),
+    generalActions: GeneralSettingsActions = GeneralSettingsActions()
+  ) {
     _selectedSection = State(initialValue: initialSection)
+    self.generalState = generalState
+    self.generalActions = generalActions
   }
 
   public var body: some View {
@@ -31,7 +39,9 @@ public struct RackSettingsView: View {
       GeneralSettingsPage(
         runningCount: model.services.filter { model.status(for: $0.id).isRunning }.count,
         totalServiceCount: model.services.count,
-        hookCount: model.hooks.count
+        hookCount: model.hooks.count,
+        state: generalState,
+        actions: generalActions
       )
     case .services:
       ServicesSettingsPage(services: model.services)

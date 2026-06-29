@@ -1,3 +1,4 @@
+mod config;
 mod functions;
 mod status;
 mod types;

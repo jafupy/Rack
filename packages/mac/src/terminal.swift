@@ -1,7 +1,7 @@
 import Foundation
 
-func openLogInTerminal(path: String, id: String) {
-  let appName = UserDefaults.standard.string(forKey: "terminalApp") ?? "Ghostty"
+func openLogInTerminal(path: String, id: String, appName: String? = nil) {
+  let appName = appName ?? UserDefaults.standard.string(forKey: "terminalApp") ?? "Ghostty"
   let tailCommand = "tail -n 200 -f '\(shellEscape(path))'"
 
   switch appName.lowercased() {

@@ -9,6 +9,9 @@ use super::{
 
 #[derive(Debug, Error)]
 pub enum WriteError {
+    #[error("terminal cannot be blank")]
+    BlankTerminal,
+
     #[error("could not determine config path: {0}")]
     ConfigPath(#[source] BackfillError),
 
@@ -41,6 +44,17 @@ pub enum WriteError {
 
     #[error("failed to cache config after write: {0}")]
     Cache(#[source] BackfillError),
+}
+
+pub fn set_terminal(config: &mut Config, terminal: impl Into<String>) -> Result<(), WriteError> {
+    let terminal = terminal.into();
+    if terminal.trim().is_empty() {
+        return Err(WriteError::BlankTerminal);
+    }
+
+    config.terminal = terminal;
+    validate_config(config)?;
+    Ok(())
 }
 
 pub fn add_service(config: &mut Config, service: Service) -> Result<(), WriteError> {

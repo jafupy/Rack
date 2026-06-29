@@ -5,11 +5,13 @@ PRODUCT_NAME := Rack
 BUNDLE_ID := dev.jafu.rack
 CONFIGURATION := debug
 RUST_LIB := .build/rust/$(CONFIGURATION)/deps/librack_services.dylib
+RUST_CLI := .build/rust/$(CONFIGURATION)/rack-cli
 SWIFT_BIN := .build/arm64-apple-macosx/$(CONFIGURATION)/$(PRODUCT_NAME)
 APP := dist/$(APP_NAME).app
 CONTENTS := $(APP)/Contents
 MACOS := $(CONTENTS)/MacOS
 FRAMEWORKS := $(CONTENTS)/Frameworks
+RESOURCES := $(CONTENTS)/Resources
 PLIST := $(CONTENTS)/Info.plist
 PLISTBUDDY := /usr/libexec/PlistBuddy
 
@@ -18,16 +20,17 @@ all: app
 dist: app
 
 rust:
-	cargo build -p rack-services
+	cargo build -p rack-services -p rack-cli
 
 swift: rust
 	swift build
 
 app: swift
 	rm -rf $(APP)
-	mkdir -p $(MACOS) $(FRAMEWORKS)
+	mkdir -p $(MACOS) $(FRAMEWORKS) $(RESOURCES)
 	cp $(SWIFT_BIN) $(MACOS)/$(PRODUCT_NAME)
 	cp $(RUST_LIB) $(FRAMEWORKS)/librack_services.dylib
+	cp $(RUST_CLI) $(RESOURCES)/rack-cli
 	install_name_tool -change $(abspath $(RUST_LIB)) @executable_path/../Frameworks/librack_services.dylib $(MACOS)/$(PRODUCT_NAME)
 	printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' '<plist version="1.0"><dict/></plist>' > $(PLIST)
 	$(PLISTBUDDY) -c 'Add :CFBundleDevelopmentRegion string en' $(PLIST)

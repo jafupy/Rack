@@ -171,7 +171,9 @@ fn service_command(
     })
 }
 
-fn with_runtime<T>(action: impl FnOnce(&RackRuntime) -> Result<T, String>) -> Result<T, String> {
+pub(super) fn with_runtime<T>(
+    action: impl FnOnce(&RackRuntime) -> Result<T, String>,
+) -> Result<T, String> {
     let runtime = RUNTIME.lock().map_err(|error| error.to_string())?;
     let runtime = runtime
         .as_ref()
@@ -179,7 +181,7 @@ fn with_runtime<T>(action: impl FnOnce(&RackRuntime) -> Result<T, String>) -> Re
     action(runtime)
 }
 
-fn with_runtime_mut<T>(
+pub(super) fn with_runtime_mut<T>(
     action: impl FnOnce(&mut RackRuntime) -> Result<T, String>,
 ) -> Result<T, String> {
     let mut runtime = RUNTIME.lock().map_err(|error| error.to_string())?;
@@ -189,14 +191,14 @@ fn with_runtime_mut<T>(
     action(runtime)
 }
 
-fn status(action: impl FnOnce() -> Result<(), FfiError>) -> RackServicesStatus {
+pub(super) fn status(action: impl FnOnce() -> Result<(), FfiError>) -> RackServicesStatus {
     match action() {
         Ok(()) => RackServicesStatus::ok(),
         Err(error) => RackServicesStatus::error(error.code, error.message),
     }
 }
 
-fn string_result(action: impl FnOnce() -> Result<String, String>) -> *mut c_char {
+pub(super) fn string_result(action: impl FnOnce() -> Result<String, String>) -> *mut c_char {
     match action() {
         Ok(value) => string_ptr(value),
         Err(error) => string_ptr(format!("ERROR:{error}")),
@@ -208,9 +210,9 @@ unsafe fn service_config(value: *const c_char) -> Result<ServiceConfig, String> 
     serde_json::from_str(&json).map_err(|error| error.to_string())
 }
 
-unsafe fn c_string(value: *const c_char) -> Result<String, String> {
+pub(super) unsafe fn c_string(value: *const c_char) -> Result<String, String> {
     if value.is_null() {
-        return Err("expected non-null service id".to_string());
+        return Err("expected non-null string".to_string());
     }
 
     CStr::from_ptr(value)
@@ -219,20 +221,20 @@ unsafe fn c_string(value: *const c_char) -> Result<String, String> {
         .map_err(|error| error.to_string())
 }
 
-struct FfiError {
+pub(super) struct FfiError {
     code: RackServicesStatusCode,
     message: String,
 }
 
 impl FfiError {
-    fn invalid_argument(message: impl Into<String>) -> Self {
+    pub(super) fn invalid_argument(message: impl Into<String>) -> Self {
         Self {
             code: RackServicesStatusCode::InvalidArgument,
             message: message.into(),
         }
     }
 
-    fn runtime(message: impl Into<String>) -> Self {
+    pub(super) fn runtime(message: impl Into<String>) -> Self {
         Self {
             code: RackServicesStatusCode::Runtime,
             message: message.into(),

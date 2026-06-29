@@ -101,6 +101,18 @@ public final class RackViewModel: ObservableObject {
     runtime?.openInTerminal(id: id)
   }
 
+  public func configPath() -> String? {
+    runtime?.configPath()
+  }
+
+  public func terminalName() -> String {
+    runtime?.terminalName() ?? "Ghostty"
+  }
+
+  public func setTerminalName(_ terminal: String) throws {
+    try runtime?.setTerminalName(terminal)
+  }
+
   public func reloadHooks() {
     hooks = runtime?.hooks() ?? []
   }
@@ -138,6 +150,9 @@ public protocol RackRuntimeClient: AnyObject {
   func log(for id: String) -> String
   func logFilePath(for id: String) -> String?
   func openInTerminal(id: String)
+  func configPath() -> String?
+  func terminalName() -> String
+  func setTerminalName(_ terminal: String) throws
   func hooks() -> [HookSummary]
 }
 

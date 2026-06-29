@@ -106,6 +106,15 @@ func rackServicesLog(_ id: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
 @_silgen_name("rack_services_log_path")
 func rackServicesLogPath(_ id: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("rack_services_config_path")
+func rackServicesConfigPath() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("rack_services_terminal")
+func rackServicesTerminal() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("rack_services_set_terminal")
+func rackServicesSetTerminal(_ terminal: UnsafePointer<CChar>) -> RackServicesStatus
+
 @_silgen_name("rack_services_shutdown")
 func rackServicesShutdown() -> RackServicesStatus
 
