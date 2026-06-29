@@ -6,6 +6,7 @@ use pingora::{
     Error, ErrorType, Result,
 };
 use rack_hooks::HookRegistry;
+use tokio::time::{sleep, Duration, Instant};
 
 use crate::{
     hooks,
@@ -16,11 +17,16 @@ use crate::{
 pub(super) struct RackProxy {
     routes: ServiceRoutes,
     hooks: HookRegistry,
+    proxy_port: u16,
 }
 
 impl RackProxy {
-    pub(super) fn new(routes: ServiceRoutes, hooks: HookRegistry) -> Self {
-        Self { routes, hooks }
+    pub(super) fn new(routes: ServiceRoutes, hooks: HookRegistry, proxy_port: u16) -> Self {
+        Self {
+            routes,
+            hooks,
+            proxy_port,
+        }
     }
 }
 
@@ -50,9 +56,18 @@ impl ProxyHttp for RackProxy {
             return respond(session, 404, &format!("unsupported Host header `{host}`")).await;
         };
 
-        let Some(destination) = self.routes.destination_for(&origin) else {
+        let Some(destination) = wait_for_destination(&self.routes, &origin).await else {
             return respond(session, 502, "service destination is not running").await;
         };
+
+        if destination.port() == self.proxy_port {
+            return respond(
+                session,
+                508,
+                "proxy loop detected: service destination points back to rack proxy",
+            )
+            .await;
+        }
 
         ctx.destination = Some(destination);
         Ok(false)
@@ -75,6 +90,25 @@ impl ProxyHttp for RackProxy {
     }
 }
 
+const ROUTE_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+const ROUTE_WAIT_INTERVAL: Duration = Duration::from_millis(50);
+
+async fn wait_for_destination(routes: &ServiceRoutes, origin: &str) -> Option<Destination> {
+    if let Some(destination) = routes.destination_for(origin) {
+        return Some(destination);
+    }
+
+    let deadline = Instant::now() + ROUTE_WAIT_TIMEOUT;
+    while Instant::now() < deadline {
+        sleep(ROUTE_WAIT_INTERVAL).await;
+        if let Some(destination) = routes.destination_for(origin) {
+            return Some(destination);
+        }
+    }
+
+    None
+}
+
 fn host_header(session: &Session) -> Option<String> {
     session
         .req_header()
@@ -88,7 +122,8 @@ fn host_header(session: &Session) -> Option<String> {
 
 async fn respond(session: &mut Session, status: u16, message: &str) -> Result<bool> {
     let body = format!("{message}\n");
-    let mut response = ResponseHeader::build(status, Some(body.len()))?;
+    let mut response = ResponseHeader::build(status, None)?;
+    response.insert_header("content-length", body.len().to_string())?;
     response.insert_header("content-type", "text/plain; charset=utf-8")?;
     response.insert_header("connection", "close")?;
     session

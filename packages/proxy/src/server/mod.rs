@@ -112,6 +112,7 @@ fn run_pingora(
     hooks: HookRegistry,
     stop: watch::Receiver<bool>,
 ) -> Result<JoinHandle<()>, ProxyError> {
+    let proxy_port = addr.port();
     let addr = addr.to_string();
     let handle = std::thread::Builder::new()
         .name("rack-proxy".to_string())
@@ -119,8 +120,10 @@ fn run_pingora(
             let mut server = Server::new_with_opt_and_conf(None, ServerConf::new().unwrap());
             server.bootstrap();
 
-            let mut proxy =
-                http_proxy_service(&server.configuration, RackProxy::new(services, hooks));
+            let mut proxy = http_proxy_service(
+                &server.configuration,
+                RackProxy::new(services, hooks, proxy_port),
+            );
             proxy.add_tcp(&addr);
             server.add_service(proxy);
             server.run(RunArgs {

@@ -74,6 +74,10 @@ pub struct UpgradeBackend {
 
 impl UpgradeBackend {
     pub async fn start() -> Self {
+        Self::start_echo_bytes(4).await
+    }
+
+    pub async fn start_echo_bytes(bytes: usize) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         tokio::spawn(async move {
@@ -87,7 +91,7 @@ impl UpgradeBackend {
                         "\r\n"
                     );
                     if stream.write_all(response.as_bytes()).await.is_ok() {
-                        echo_four_bytes(&mut stream).await;
+                        echo_bytes(&mut stream, bytes).await;
                     }
                 });
             }
@@ -137,8 +141,8 @@ async fn read_http_request(stream: &mut TcpStream) -> String {
     format!("{}\n{}", request_line, body)
 }
 
-async fn echo_four_bytes(stream: &mut TcpStream) {
-    let mut payload = [0; 4];
+async fn echo_bytes(stream: &mut TcpStream, bytes: usize) {
+    let mut payload = vec![0; bytes];
     if stream.read_exact(&mut payload).await.is_ok() {
         let _ = stream.write_all(&payload).await;
     }
