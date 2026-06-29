@@ -417,16 +417,16 @@ Keep in mind:
 - [ ] Decide whether to keep top-level `rack start <name>`.
 - [ ] Decide whether to keep top-level `rack stop <name>`.
 - [ ] Decide whether to keep top-level `rack rm <name>`.
-- [ ] Support service lookup by ID.
-- [ ] Support service lookup by name if useful.
-- [ ] Support service lookup by host if useful.
+- [x] Support service lookup by ID.
+- [x] Support service lookup by name if useful.
+- [x] Support service lookup by host if useful.
 - [x] Add `rack service edit`.
 - [x] Add `rack service restart`.
 - [ ] Add `rack service duplicate` if useful.
-- [ ] Improve `rack service list` URLs.
-- [ ] Include proxy port in URL when not using standard ports.
+- [x] Improve `rack service list` URLs.
+- [x] Include proxy port in URL when not using standard ports.
 - [x] Show starting/running/stopped/failed state.
-- [ ] Show detected backend port(s).
+- [x] Show detected backend port(s).
 - [ ] Add machine-readable output if useful.
 - [ ] Align control socket path with app.
 - [ ] Document `RACK_CONTROL_SOCKET`.

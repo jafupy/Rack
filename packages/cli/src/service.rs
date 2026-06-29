@@ -54,10 +54,10 @@ pub enum Command {
 pub fn run(command: Option<Command>) -> Result<()> {
     match command.unwrap_or(Command::List) {
         Command::List => list(),
-        Command::Start { id } => control(ControlCommand::Start, &id),
-        Command::Stop { id } => control(ControlCommand::Stop, &id),
-        Command::Restart { id } => control(ControlCommand::Restart, &id),
-        Command::Log { id } => log(&id),
+        Command::Start { id } => control(ControlCommand::Start, &resolve_service_id(&id)?),
+        Command::Stop { id } => control(ControlCommand::Stop, &resolve_service_id(&id)?),
+        Command::Restart { id } => control(ControlCommand::Restart, &resolve_service_id(&id)?),
+        Command::Log { id } => log(&resolve_service_id(&id)?),
         Command::Add {
             id,
             name,
@@ -80,8 +80,15 @@ pub fn run(command: Option<Command>) -> Result<()> {
             run,
             working_dir,
             auto_start,
-        } => edit(&id, name, host, run, working_dir, auto_start),
-        Command::Remove { id } | Command::Delete { id } => remove(&id),
+        } => edit(
+            &resolve_service_id(&id)?,
+            name,
+            host,
+            run,
+            working_dir,
+            auto_start,
+        ),
+        Command::Remove { id } | Command::Delete { id } => remove(&resolve_service_id(&id)?),
     }
 }
 
@@ -204,6 +211,21 @@ fn control_request(
         .map_err(|error| anyhow::anyhow!(error))
 }
 
+fn resolve_service_id(input: &str) -> Result<String> {
+    let config = config::load()?;
+    let matches: Vec<_> = config
+        .services
+        .iter()
+        .filter(|service| service.id == input || service.name == input || service.host == input)
+        .collect();
+
+    match matches.as_slice() {
+        [] => Ok(input.to_string()),
+        [service] => Ok(service.id.clone()),
+        _ => bail!("ambiguous service `{input}`; use the service id"),
+    }
+}
+
 fn response_snapshot(response: Response) -> Result<Snapshot> {
     if !response.ok {
         bail!(response
@@ -223,7 +245,7 @@ fn print_snapshot(snapshot: Snapshot) -> Result<()> {
     }
 
     for service in snapshot.services {
-        print_service(&service);
+        print_service(&service, snapshot.proxy_port);
     }
     Ok(())
 }
@@ -236,34 +258,59 @@ fn print_config_services() -> Result<()> {
     }
 
     for service in config.services {
-        print_service(&ServiceSnapshot {
-            id: service.id,
-            name: service.name,
-            host: service.host,
-            run: service.run,
-            working_dir: service.working_dir,
-            auto_start: service.auto_start,
-            state: StateSnapshot::Stopped,
-        });
+        print_service(
+            &ServiceSnapshot {
+                id: service.id,
+                name: service.name,
+                host: service.host,
+                run: service.run,
+                working_dir: service.working_dir,
+                auto_start: service.auto_start,
+                state: StateSnapshot::Stopped,
+            },
+            None,
+        );
     }
     Ok(())
 }
 
-fn print_service(service: &ServiceSnapshot) {
+fn print_service(service: &ServiceSnapshot, proxy_port: Option<u16>) {
     let auto_start = if service.auto_start {
         " auto-start"
     } else {
         ""
     };
     println!(
-        "{}\t{}\t{}\thttp://{}.localhost\t{}{}",
+        "{}\t{}\t{}\t{}\t{}{}{}",
         service.id,
         service.name,
         state_label(&service.state),
-        service.host,
+        service_url(service, proxy_port),
         service.run,
+        ports_label(&service.state),
         auto_start
     );
+}
+
+fn service_url(service: &ServiceSnapshot, proxy_port: Option<u16>) -> String {
+    match proxy_port {
+        Some(80) | None => format!("http://{}.localhost", service.host),
+        Some(port) => format!("http://{}.localhost:{port}", service.host),
+    }
+}
+
+fn ports_label(state: &StateSnapshot) -> String {
+    match state {
+        StateSnapshot::Running { ports, .. } if !ports.is_empty() => format!(
+            " ports={}",
+            ports
+                .iter()
+                .map(u16::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        _ => String::new(),
+    }
 }
 
 fn state_label(state: &StateSnapshot) -> &'static str {
