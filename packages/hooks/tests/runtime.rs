@@ -49,6 +49,25 @@ fn errors_for_missing_wasm_cron_export() {
 }
 
 #[test]
+fn rejects_wasm_hook_responses_with_invalid_statuses() {
+    let registry = HookRegistry::default();
+    registry
+        .register_wasm(&test_wasm_with_response(
+            r#"{"status":99,"headers":[],"body":[]}"#,
+        ))
+        .unwrap();
+
+    let response =
+        rack_hooks::dispatch(&registry, &HookRequest::new("GET", "/hello", "rack.local"));
+
+    assert_eq!(response.status, 500);
+    assert_eq!(
+        response.body,
+        b"hook failed: invalid HTTP status returned by hook: 99\n"
+    );
+}
+
+#[test]
 fn executes_registered_wasm_hook() {
     let registry = HookRegistry::default();
     registry.register_wasm(&test_wasm()).unwrap();
@@ -65,7 +84,12 @@ fn executes_registered_wasm_hook() {
 }
 
 fn test_wasm() -> Vec<u8> {
-    let response = r#"{"status":201,"headers":[["content-type","text/plain"]],"body":[111,107]}"#;
+    test_wasm_with_response(
+        r#"{"status":201,"headers":[["content-type","text/plain"]],"body":[111,107]}"#,
+    )
+}
+
+fn test_wasm_with_response(response: &str) -> Vec<u8> {
     let ptr = 1024u64;
     let len = response.len() as u64;
     let response_data = wat_bytes(response.as_bytes());

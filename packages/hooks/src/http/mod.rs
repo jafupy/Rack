@@ -1,3 +1,5 @@
 mod dispatch;
 
-pub use dispatch::{dispatch, HookEndpoint, HookRegistry, HookRequest, HookResponse};
+pub use dispatch::{
+    dispatch, HookEndpoint, HookRegistry, HookRequest, HookResponse, InvalidHookResponse,
+};

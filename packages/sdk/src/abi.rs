@@ -1,4 +1,4 @@
-use crate::{Request, Response};
+use crate::{IntoResponse, Request};
 
 #[no_mangle]
 pub extern "C" fn rack_alloc(len: i32) -> i32 {
@@ -15,9 +15,9 @@ pub unsafe extern "C" fn rack_dealloc(ptr: i32, len: i32) {
     drop(Vec::from_raw_parts(ptr as *mut u8, len, len));
 }
 
-pub fn run_http(handler: fn(Request) -> Response, req_ptr: i32, req_len: i32) -> i64 {
+pub fn run_http<R: IntoResponse>(handler: fn(Request) -> R, req_ptr: i32, req_len: i32) -> i64 {
     let request = read_request(req_ptr, req_len);
-    let response = handler(request);
+    let response = handler(request).into_response();
     let bytes = serde_json::to_vec(&response).expect("serialize hook response");
     let (ptr, len) = leak_bytes(bytes);
     pack_ptr_len(ptr, len)

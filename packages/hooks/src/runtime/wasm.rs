@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use thiserror::Error;
-use wasmtime::{Engine, Instance, Memory, Module, Store};
+use wasmtime::{Caller, Engine, Instance, Linker, Memory, Module, Store};
 
 use crate::{HookEndpoint, HookRequest, HookResponse};
 
@@ -72,7 +72,7 @@ pub fn run_cron_wasm(wasm: &[u8], entry: &str) -> Result<(), RuntimeError> {
     let engine = Engine::default();
     let module = Module::from_binary(&engine, wasm)?;
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[])?;
+    let instance = instantiate(&engine, &mut store, &module)?;
     let entry = instance.get_typed_func::<(), ()>(&mut store, entry)?;
     entry.call(&mut store, ()).map_err(RuntimeError::from)
 }
@@ -85,7 +85,7 @@ struct WasmModule {
 impl WasmModule {
     fn run(&self, engine: &Engine, request: &HookRequest) -> Result<HookResponse, RuntimeError> {
         let mut store = Store::new(engine, ());
-        let instance = Instance::new(&mut store, &self.module, &[])?;
+        let instance = instantiate(engine, &mut store, &self.module)?;
         let memory = memory(&mut store, &instance)?;
         let alloc = instance.get_typed_func::<i32, i32>(&mut store, "rack_alloc")?;
         let dealloc = instance.get_typed_func::<(i32, i32), ()>(&mut store, "rack_dealloc")?;
@@ -102,7 +102,9 @@ impl WasmModule {
         let response = read_memory(&mut store, &memory, response_ptr, response_len)?;
         dealloc.call(&mut store, (response_ptr, response_len))?;
 
-        Ok(serde_json::from_slice(&response)?)
+        let response: HookResponse = serde_json::from_slice(&response)?;
+        response.validate().map_err(RuntimeError::InvalidResponse)?;
+        Ok(response)
     }
 }
 
@@ -128,6 +130,42 @@ pub enum RuntimeError {
 
     #[error("invalid pointer/length returned by hook")]
     InvalidPointer,
+
+    #[error(transparent)]
+    InvalidResponse(#[from] crate::InvalidHookResponse),
+}
+
+fn instantiate(
+    engine: &Engine,
+    store: &mut Store<()>,
+    module: &Module,
+) -> Result<Instance, RuntimeError> {
+    let mut linker = Linker::new(engine);
+    linker.func_wrap(
+        "rack",
+        "log",
+        |mut caller: Caller<'_, ()>, ptr: i32, len: i32| {
+            let Some(memory) = caller
+                .get_export("memory")
+                .and_then(|export| export.into_memory())
+            else {
+                return;
+            };
+            let Ok(start) = usize::try_from(ptr) else {
+                return;
+            };
+            let Ok(len) = usize::try_from(len) else {
+                return;
+            };
+            let data = memory.data(&caller);
+            if let Some(bytes) = data.get(start..start + len) {
+                eprintln!("{}", String::from_utf8_lossy(bytes));
+            }
+        },
+    )?;
+    linker
+        .instantiate(store, module)
+        .map_err(RuntimeError::from)
 }
 
 fn memory(store: &mut Store<()>, instance: &Instance) -> Result<Memory, RuntimeError> {
