@@ -107,27 +107,27 @@ Keep in mind:
 
 ## Menu bar UI
 
-- [ ] Keep current good product shape: small native menu bar popover.
-- [ ] Show service rows.
-- [ ] Show status dots/states.
-- [ ] Show running count.
-- [ ] Show start/stop controls.
-- [ ] Keep restart/refresh button removed unless restart is explicitly reintroduced.
-- [ ] Add restart only where it is semantically correct.
-- [ ] Keep logs preview.
-- [ ] Keep ANSI formatting in logs preview.
+- [x] Keep current good product shape: small native menu bar popover.
+- [x] Show service rows.
+- [x] Show status dots/states.
+- [x] Show running count.
+- [x] Show start/stop controls.
+- [x] Keep restart/refresh button removed unless restart is explicitly reintroduced.
+- [x] Add restart only where it is semantically correct.
+- [x] Keep logs preview.
+- [x] Keep ANSI formatting in logs preview.
 - [x] Show failed service state when runtime supports it.
 - [x] Show starting state clearly.
 - [ ] Show detected backend port(s) if useful.
-- [ ] Show local service URL.
-- [ ] Add copy URL action.
-- [ ] Add open URL action.
-- [ ] Add open logs action.
+- [x] Show local service URL.
+- [x] Add copy URL action.
+- [x] Add open URL action.
+- [x] Add open logs action.
 - [ ] Add open working directory action if useful.
-- [ ] Add hooks summary section if useful.
+- [x] Add hooks summary section if useful.
 - [ ] Add hook reload button only if reload actually reloads runtime/proxy/scheduler.
 - [ ] Otherwise label hook action as summary refresh only or omit it.
-- [ ] Ensure menu does not own runtime state.
+- [x] Ensure menu does not own runtime state.
 
 ## Service config model
 
@@ -137,9 +137,9 @@ Keep in mind:
 - [ ] Decide whether to restore custom domains.
 - [ ] Decide whether to restore explicit configured ports.
 - [ ] Decide whether to restore `portFlag`.
-- [ ] Keep `host` mapping to `<host>.localhost`.
-- [ ] Keep `working_dir`.
-- [ ] Keep `auto_start`.
+- [x] Keep `host` mapping to `<host>.localhost`.
+- [x] Keep `working_dir`.
+- [x] Keep `auto_start`.
 - [x] Add config migration if old JSON config should be imported automatically.
 - [x] Map old `config.json` services to new TOML where possible.
 - [x] Preserve existing users’ service definitions where possible.
@@ -148,7 +148,7 @@ Keep in mind:
 - [ ] Add validation for any restored fields.
 - [x] Add config write/update APIs.
 - [x] Preserve nice TOML formatting when writing.
-- [ ] Expose config path over FFI/control API.
+- [x] Expose config path over FFI/control API.
 - [ ] Expose config parse/validation errors to UI.
 
 ## Service runtime
@@ -167,7 +167,7 @@ Keep in mind:
 - [x] Avoid services stuck in `Starting` forever.
 - [x] Surface readiness failure message.
 - [ ] Track process exit reason where possible.
-- [ ] Track process group cleanly.
+- [x] Track process group cleanly.
 - [ ] Keep registry as source of truth.
 - [ ] Treat registry/process-handle disagreement as internal desync error.
 - [ ] Do not silently paper over impossible states.
@@ -177,19 +177,19 @@ Keep in mind:
 - [ ] Add pending route/waiting behaviour if desired.
 - [ ] Preserve good UX for opening service URL immediately after clicking start.
 - [ ] Restore or replace login-shell env loading.
-- [ ] Merge current process env.
+- [x] Merge current process env.
 - [ ] Add per-service env overrides if config supports them.
-- [ ] Keep colour env vars for terminal output.
+- [x] Keep colour env vars for terminal output.
 - [ ] Decide whether to inject `PORT`.
 - [ ] Decide whether to inject `HOST`.
 - [ ] Decide whether to append old `portFlag`.
 - [ ] Decide whether `rack-bridge` / Unix socket launch path is still needed.
 - [ ] Add Unix socket backend support if needed.
-- [ ] Keep local TCP-only model if that is enough.
-- [ ] Add auto-start services on runtime init.
-- [ ] Make stop kill full process group reliably.
-- [ ] Make logs truncate on start/restart.
-- [ ] Make logs append stdout/stderr chunks safely.
+- [x] Keep local TCP-only model if that is enough.
+- [x] Add auto-start services on runtime init.
+- [x] Make stop kill full process group reliably.
+- [x] Make logs truncate on start/restart.
+- [x] Make logs append stdout/stderr chunks safely.
 - [ ] Add service runtime tests.
 
 ## Service UI/settings
@@ -560,7 +560,7 @@ Keep in mind:
 ## Cleanup
 
 - [ ] Decide what to do with untracked `packages/hooks/src/std/`.
-- [ ] Remove stale old `standardPortsEnabled` AppStorage if replaced by TOML.
+- [x] Remove stale old `standardPortsEnabled` AppStorage if replaced by TOML.
 - [ ] Remove stale old settings assumptions.
 - [ ] Remove any dead FFI hodge-podge once bridge is cleaned.
 - [ ] Split any large files that drift past maintainable size.

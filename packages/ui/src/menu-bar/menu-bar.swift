@@ -3,7 +3,6 @@ import SwiftUI
 @MainActor
 public struct MenuBarContentView: View {
   @EnvironmentObject private var model: RackViewModel
-  @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
   @State private var hooksExpanded = false
   var openSettings: ((SettingsSection) -> Void)?
 
@@ -156,8 +155,6 @@ public struct MenuBarContentView: View {
 
 @MainActor
 private struct HookMenuRow: View {
-  @AppStorage("standardPortsEnabled") private var standardPortsEnabled = false
-
   let hook: HookSummary
 
   var body: some View {
@@ -190,10 +187,7 @@ private struct HookMenuRow: View {
   }
 
   private func hookRouteURL(_ path: String) -> String {
-    if standardPortsEnabled {
-      return "rack.local\(path)"
-    }
-    return "localhost:\(RackProxy.fallbackPort)\(path)"
+    "localhost:\(RackProxy.fallbackPort)\(path)"
   }
 }
 
@@ -242,6 +236,15 @@ private struct ServiceMenuRow: View {
               .font(.system(size: 10, design: .monospaced))
               .foregroundStyle(.opacity(0.8))
               .lineLimit(1)
+              .contextMenu {
+                Button("Copy URL") {
+                  NSPasteboard.general.clearContents()
+                  NSPasteboard.general.setString(service.localURL, forType: .string)
+                }
+                Button("Open URL") {
+                  NSWorkspace.shared.open(url)
+                }
+              }
           } else if !commandLabel.isEmpty {
             Text(commandLabel)
               .font(.system(size: 10, design: .monospaced))
@@ -264,7 +267,7 @@ private struct ServiceMenuRow: View {
         }
         .buttonStyle(.plain)
         .disabled(!hasLog)
-        .help("Open in \(UserDefaults.standard.string(forKey: "terminalApp") ?? "Ghostty")")
+        .help("Open in \(model.terminalName())")
 
         // Play / stop button
         Button {
