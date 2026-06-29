@@ -37,6 +37,13 @@ enum HookCommand {
     Deploy {
         path: Option<String>,
     },
+    Test {
+        path: Option<String>,
+        #[arg(long)]
+        hook: Option<String>,
+        #[arg(long)]
+        route: Option<String>,
+    },
     #[command(visible_alias = "rm")]
     Remove {
         name: String,
@@ -64,6 +71,11 @@ fn run_hook(command: HookCommand) -> Result<()> {
         HookCommand::Init { path } => hook::init(&path),
         HookCommand::Build { path } => hook::build(path.as_deref().unwrap_or(".")),
         HookCommand::Deploy { path } => hook::deploy(path.as_deref().unwrap_or(".")),
+        HookCommand::Test { path, hook, route } => hook::test(
+            path.as_deref().unwrap_or("."),
+            hook.as_deref(),
+            route.as_deref(),
+        ),
         HookCommand::Remove { name } => hook::remove(&name),
     }
 }

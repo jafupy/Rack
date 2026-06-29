@@ -27,6 +27,17 @@ fn hook_ls_lists_deployed_hook_errors() {
 }
 
 #[test]
+fn hook_test_help_exposes_selectors() {
+    let home = temp_home("hook-test-help");
+
+    let output = rack(&home, ["hook", "test", "--help"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stdout(&output).contains("--hook"));
+    assert!(stdout(&output).contains("--route"));
+}
+
+#[test]
 fn hook_remove_deletes_deployed_hook() {
     let home = temp_home("hook-remove");
     let deployed = home.join(".rack/hooks/example");
