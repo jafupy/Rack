@@ -160,6 +160,31 @@ pub extern "C" fn rack_services_hooks_json() -> *mut c_char {
     string_result(|| with_runtime(|runtime| runtime.hooks_json()))
 }
 
+#[no_mangle]
+pub extern "C" fn rack_services_reload_hooks() -> RackServicesStatus {
+    status(|| {
+        with_runtime_mut(|runtime| runtime.reload_hooks()).map_err(FfiError::runtime)?;
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn rack_services_remove_hook(name: *const c_char) -> RackServicesStatus {
+    status(|| {
+        let name = unsafe { c_string(name) }.map_err(FfiError::invalid_argument)?;
+        with_runtime_mut(|runtime| runtime.remove_hook(&name)).map_err(FfiError::runtime)?;
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn rack_services_hook_path(name: *const c_char) -> *mut c_char {
+    string_result(|| {
+        let name = unsafe { c_string(name) }?;
+        RackRuntime::hook_path(&name)
+    })
+}
+
 fn service_command(
     id: *const c_char,
     command: impl FnOnce(&RackRuntime, &str) -> Result<(), String>,

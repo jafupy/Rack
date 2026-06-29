@@ -67,6 +67,14 @@ impl HookRegistry {
             .retain(|endpoint| endpoint.id != id);
     }
 
+    pub fn clear(&self) {
+        self.endpoints
+            .write()
+            .expect("hook registry lock poisoned")
+            .clear();
+        *self.runtime.write().expect("hook runtime lock poisoned") = HookRuntime::new();
+    }
+
     pub fn endpoints(&self) -> Vec<HookEndpoint> {
         self.endpoints
             .read()

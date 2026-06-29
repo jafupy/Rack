@@ -397,19 +397,19 @@ Keep in mind:
 
 ## Hooks UI
 
-- [ ] Add Hooks Settings page from scratch.
-- [ ] Show deployed hooks.
-- [ ] Show HTTP routes.
-- [ ] Show cron hooks.
-- [ ] Show hook load errors.
+- [x] Add Hooks Settings page from scratch.
+- [x] Show deployed hooks.
+- [x] Show HTTP routes.
+- [x] Show cron hooks.
+- [x] Show hook load errors.
 - [ ] Show route conflicts.
 - [ ] Show hook logs if available.
-- [ ] Add open hook directory action if useful.
-- [ ] Add remove deployed hook action if safe.
-- [ ] Add reload hooks action only when runtime reload is real.
-- [ ] Reload should update proxy registry.
-- [ ] Reload should update cron scheduler.
-- [ ] Reload should update UI summaries.
+- [x] Add open hook directory action if useful.
+- [x] Add remove deployed hook action if safe.
+- [x] Add reload hooks action only when runtime reload is real.
+- [x] Reload should update proxy registry.
+- [x] Reload should update cron scheduler.
+- [x] Reload should update UI summaries.
 
 ## CLI services
 
@@ -456,7 +456,7 @@ Keep in mind:
 - [ ] Add restart FFI.
 - [x] Add failed-state FFI.
 - [x] Add config path FFI.
-- [ ] Add hook reload FFI when real reload exists.
+- [x] Add hook reload FFI when real reload exists.
 - [ ] Add hook summaries/errors FFI improvements.
 - [ ] Avoid returning dangling pointers.
 - [ ] Clearly define ownership for Rust-allocated memory.

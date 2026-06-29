@@ -1,14 +1,22 @@
 import SwiftUI
 
 struct HooksSettingsPage: View {
+  @EnvironmentObject private var model: RackViewModel
   let hooks: [HookSummary]
 
   var body: some View {
     SettingsPageLayout {
       SettingsSectionHeader(
         title: "Hooks",
-        subtitle: "Inspect discovered hooks. Hook management remains read-only in this shell."
+        subtitle: "Manage hooks deployed under ~/.rack/hooks."
       )
+
+      HStack {
+        Button("Reload Hooks") {
+          model.reloadHooks()
+        }
+        Spacer()
+      }
 
       if hooks.isEmpty {
         PlaceholderCard(
@@ -20,7 +28,11 @@ struct HooksSettingsPage: View {
         SettingsCard {
           VStack(spacing: 0) {
             ForEach(Array(hooks.enumerated()), id: \.element.id) { index, hook in
-              HookSettingsRow(hook: hook)
+              HookSettingsRow(
+                hook: hook,
+                openDirectory: { model.openHookDirectory(name: hook.name) },
+                remove: { model.removeHook(name: hook.name) }
+              )
               if index < hooks.count - 1 {
                 Divider()
               }
@@ -34,6 +46,10 @@ struct HooksSettingsPage: View {
 
 private struct HookSettingsRow: View {
   let hook: HookSummary
+  let openDirectory: () -> Void
+  let remove: () -> Void
+
+  @State private var confirmingRemoval = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -49,6 +65,8 @@ private struct HookSettingsRow: View {
           .font(.caption.weight(.medium))
           .foregroundStyle(.orange)
         }
+        Button("Open") { openDirectory() }
+        Button("Remove", role: .destructive) { confirmingRemoval = true }
       }
 
       if hook.routes.isEmpty && hook.crons.isEmpty {
@@ -69,5 +87,15 @@ private struct HookSettingsRow: View {
       }
     }
     .padding(.vertical, 12)
+    .confirmationDialog(
+      "Remove \(hook.name)?",
+      isPresented: $confirmingRemoval,
+      titleVisibility: .visible
+    ) {
+      Button("Remove Hook", role: .destructive) { remove() }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This deletes ~/.rack/hooks/\(hook.name).")
+    }
   }
 }

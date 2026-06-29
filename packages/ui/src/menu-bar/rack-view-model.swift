@@ -114,7 +114,25 @@ public final class RackViewModel: ObservableObject {
   }
 
   public func reloadHooks() {
-    hooks = runtime?.hooks() ?? []
+    do {
+      try runtime?.reloadHooks()
+      hooks = runtime?.hooks() ?? []
+    } catch {
+      print("failed to reload hooks: \(error)")
+    }
+  }
+
+  public func removeHook(name: String) {
+    do {
+      try runtime?.removeHook(name: name)
+      hooks = runtime?.hooks() ?? []
+    } catch {
+      print("failed to remove hook \(name): \(error)")
+    }
+  }
+
+  public func openHookDirectory(name: String) {
+    runtime?.openHookDirectory(name: name)
   }
 
   private func startRefreshing() {
@@ -154,6 +172,9 @@ public protocol RackRuntimeClient: AnyObject {
   func terminalName() -> String
   func setTerminalName(_ terminal: String) throws
   func hooks() -> [HookSummary]
+  func reloadHooks() throws
+  func removeHook(name: String) throws
+  func openHookDirectory(name: String)
 }
 
 public struct HookSummary: Identifiable, Equatable {

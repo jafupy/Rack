@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import RackUI
 
@@ -105,6 +106,22 @@ final class RackServicesClient: RackRuntimeClient {
       print("failed to load hooks: \(error)")
       return []
     }
+  }
+
+  func reloadHooks() throws {
+    try RackBridge.check(rackServicesReloadHooks())
+  }
+
+  func removeHook(name: String) throws {
+    try name.withCString { try RackBridge.check(rackServicesRemoveHook($0)) }
+  }
+
+  func openHookDirectory(name: String) {
+    guard let path = try? name.withCString({ try RackBridge.value(rackServicesHookPath($0)) })
+    else {
+      return
+    }
+    NSWorkspace.shared.open(URL(fileURLWithPath: path))
   }
 }
 

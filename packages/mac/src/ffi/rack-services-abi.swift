@@ -121,6 +121,15 @@ func rackServicesShutdown() -> RackServicesStatus
 @_silgen_name("rack_services_hooks_json")
 func rackServicesHooksJson() -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("rack_services_reload_hooks")
+func rackServicesReloadHooks() -> RackServicesStatus
+
+@_silgen_name("rack_services_remove_hook")
+func rackServicesRemoveHook(_ name: UnsafePointer<CChar>) -> RackServicesStatus
+
+@_silgen_name("rack_services_hook_path")
+func rackServicesHookPath(_ name: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("rack_services_status_free")
 func rackServicesStatusFree(_ status: RackServicesStatus)
 

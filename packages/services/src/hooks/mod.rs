@@ -33,6 +33,24 @@ pub struct DeployedHooks {
     pub crons: Vec<CronHook>,
 }
 
+pub fn deployed_root() -> Result<PathBuf, String> {
+    let home = std::env::var_os("HOME").ok_or_else(|| "HOME is not set".to_string())?;
+    Ok(PathBuf::from(home).join(".rack/hooks"))
+}
+
+pub fn deployed_hook_path(name: &str) -> Result<PathBuf, String> {
+    validate_hook_name(name)?;
+    Ok(deployed_root()?.join(name))
+}
+
+pub fn remove_deployed(name: &str) -> Result<(), String> {
+    let path = deployed_hook_path(name)?;
+    if !path.exists() {
+        return Err(format!("unknown hook: {name}"));
+    }
+    fs::remove_dir_all(path).map_err(|error| error.to_string())
+}
+
 pub fn load_deployed(registry: &HookRegistry) -> DeployedHooks {
     let mut summaries = Vec::new();
     let mut crons = Vec::new();
@@ -47,10 +65,9 @@ pub fn load_deployed(registry: &HookRegistry) -> DeployedHooks {
 }
 
 fn deployed_hook_dirs() -> Vec<PathBuf> {
-    let Some(home) = std::env::var_os("HOME") else {
+    let Ok(root) = deployed_root() else {
         return Vec::new();
     };
-    let root = PathBuf::from(home).join(".rack/hooks");
     let Ok(entries) = fs::read_dir(root) else {
         return Vec::new();
     };
@@ -181,4 +198,14 @@ fn dir_name(dir: &PathBuf) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or("unknown")
         .to_string()
+}
+
+fn validate_hook_name(name: &str) -> Result<(), String> {
+    let valid = !name.is_empty()
+        && name
+            .chars()
+            .all(|char| char.is_ascii_alphanumeric() || matches!(char, '-' | '_'));
+    valid
+        .then_some(())
+        .ok_or_else(|| format!("invalid hook name: {name}"))
 }
