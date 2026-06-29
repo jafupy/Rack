@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 use wasmtime::{Caller, Engine, Instance, Linker, Memory, Module, Store};
 
-use crate::{HookEndpoint, HookRequest, HookResponse};
+use crate::{CronEvent, HookEndpoint, HookRequest, HookResponse};
 
 use super::{load_metadata, metadata::MetadataError, WasmHookEndpoint};
 
@@ -69,12 +69,34 @@ impl HookRuntime {
 }
 
 pub fn run_cron_wasm(wasm: &[u8], entry: &str) -> Result<(), RuntimeError> {
+    let event = CronEvent::new("", entry, "", 0);
+    run_cron_wasm_with_event(wasm, entry, &event)
+}
+
+pub fn run_cron_wasm_with_event(
+    wasm: &[u8],
+    entry: &str,
+    event: &CronEvent,
+) -> Result<(), RuntimeError> {
     let engine = Engine::default();
     let module = Module::from_binary(&engine, wasm)?;
     let mut store = Store::new(&engine, ());
     let instance = instantiate(&engine, &mut store, &module)?;
-    let entry = instance.get_typed_func::<(), ()>(&mut store, entry)?;
-    entry.call(&mut store, ()).map_err(RuntimeError::from)
+
+    if let Ok(entry_func) = instance.get_typed_func::<(i32, i32), ()>(&mut store, entry) {
+        let memory = memory(&mut store, &instance)?;
+        let alloc = instance.get_typed_func::<i32, i32>(&mut store, "rack_alloc")?;
+        let dealloc = instance.get_typed_func::<(i32, i32), ()>(&mut store, "rack_dealloc")?;
+        let event = serde_json::to_vec(event)?;
+        let event_ptr = alloc.call(&mut store, event.len() as i32)?;
+        write_memory(&mut store, &memory, event_ptr, &event)?;
+        let result = entry_func.call(&mut store, (event_ptr, event.len() as i32));
+        dealloc.call(&mut store, (event_ptr, event.len() as i32))?;
+        return result.map_err(RuntimeError::from);
+    }
+
+    let entry_func = instance.get_typed_func::<(), ()>(&mut store, entry)?;
+    entry_func.call(&mut store, ()).map_err(RuntimeError::from)
 }
 
 struct WasmModule {

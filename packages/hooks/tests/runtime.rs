@@ -1,4 +1,6 @@
-use rack_hooks::{load_metadata, HookRegistry, HookRequest, WasmHookEndpoint, METADATA_SECTION};
+use rack_hooks::{
+    load_metadata, CronEvent, HookRegistry, HookRequest, WasmHookEndpoint, METADATA_SECTION,
+};
 
 #[test]
 fn reads_hook_metadata_from_wasm_custom_section() {
@@ -41,6 +43,13 @@ fn reads_ndjson_hook_metadata_from_wasm_custom_section() {
 #[test]
 fn executes_wasm_cron_hook() {
     rack_hooks::run_cron_wasm(&cron_wasm(), "tick").unwrap();
+}
+
+#[test]
+fn executes_wasm_cron_hook_with_event_payload() {
+    let event = CronEvent::new("demo", "tick", "weekdays at 9:30am", 42);
+
+    rack_hooks::run_cron_wasm_with_event(&cron_event_wasm(), "tick", &event).unwrap();
 }
 
 #[test]
@@ -124,6 +133,38 @@ fn test_wasm_with_response(response: &str) -> Vec<u8> {
 
 fn cron_wasm() -> Vec<u8> {
     wat::parse_str(r#"(module (func (export "tick")))"#).unwrap()
+}
+
+fn cron_event_wasm() -> Vec<u8> {
+    wat::parse_str(
+        r#"
+        (module
+          (memory (export "memory") 1)
+          (global $heap (mut i32) (i32.const 2048))
+          (func (export "rack_alloc") (param $len i32) (result i32)
+            (local $ptr i32)
+            global.get $heap
+            local.set $ptr
+            global.get $heap
+            local.get $len
+            i32.add
+            global.set $heap
+            local.get $ptr)
+          (func (export "rack_dealloc") (param i32) (param i32))
+          (func (export "tick") (param $ptr i32) (param $len i32)
+            local.get $ptr
+            i32.load8_u offset=84
+            i32.const 52
+            i32.ne
+            if unreachable end
+            local.get $ptr
+            i32.load8_u offset=85
+            i32.const 50
+            i32.ne
+            if unreachable end))
+        "#,
+    )
+    .unwrap()
 }
 
 fn test_module() -> Vec<u8> {

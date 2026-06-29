@@ -8,7 +8,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rack_hooks::run_cron_wasm;
+use chrono::Local;
+use rack_hooks::{run_cron_wasm_with_event, CronEvent};
+
+use super::schedule::parse_schedule;
 
 #[derive(Clone)]
 pub struct CronHook {
@@ -46,63 +49,47 @@ impl Drop for HookScheduler {
 }
 
 fn run(crons: Vec<CronHook>, stop: Arc<AtomicBool>) {
+    let schedules: Vec<_> = crons
+        .into_iter()
+        .filter_map(|cron| match parse_schedule(&cron.schedule) {
+            Ok(schedule) => Some((cron, schedule)),
+            Err(error) => {
+                eprintln!(
+                    "cron hook {}:{} has invalid schedule: {error}",
+                    cron.package, cron.id
+                );
+                None
+            }
+        })
+        .collect();
     let mut next_runs = HashMap::new();
 
     while !stop.load(Ordering::Relaxed) {
         let now = Instant::now();
-        for cron in &crons {
-            let Ok(interval) = parse_interval(&cron.schedule) else {
-                continue;
-            };
+        for (cron, schedule) in &schedules {
             let key = format!("{}:{}", cron.package, cron.id);
-            let due_at = next_runs.entry(key).or_insert_with(|| now + interval);
+            let due_at = next_runs
+                .entry(key)
+                .or_insert_with(|| schedule.next_instant_after(Local::now(), now));
             if *due_at > now {
                 continue;
             }
 
-            if let Err(error) = run_cron_wasm(&cron.wasm, &cron.entry) {
-                eprintln!("cron hook {}:{} failed: {error}", cron.package, cron.id);
-            }
-            *due_at = now + interval;
+            run_cron(cron);
+            *due_at = schedule.next_instant_after(Local::now(), Instant::now());
         }
         thread::sleep(Duration::from_secs(1));
     }
 }
 
-fn parse_interval(schedule: &str) -> Result<Duration, String> {
-    let normalized = schedule.trim().to_lowercase();
-    let rest = normalized
-        .strip_prefix("every ")
-        .ok_or_else(|| "expected schedule to start with `every`".to_string())?;
-    let mut parts = rest.split_whitespace();
-    let first = parts.next().ok_or_else(|| "missing interval".to_string())?;
-
-    let (amount, unit) = match first {
-        "second" | "seconds" | "minute" | "minutes" | "hour" | "hours" | "day" | "days" => {
-            (1.0, first)
-        }
-        value => {
-            let amount = value
-                .parse::<f64>()
-                .map_err(|_| "invalid interval amount".to_string())?;
-            let unit = parts
-                .next()
-                .ok_or_else(|| "missing interval unit".to_string())?;
-            (amount, unit)
-        }
-    };
-
-    if amount <= 0.0 {
-        return Err("interval must be positive".to_string());
+fn run_cron(cron: &CronHook) {
+    let event = CronEvent::new(
+        cron.package.clone(),
+        cron.id.clone(),
+        cron.schedule.clone(),
+        Local::now().timestamp(),
+    );
+    if let Err(error) = run_cron_wasm_with_event(&cron.wasm, &cron.entry, &event) {
+        eprintln!("cron hook {}:{} failed: {error}", cron.package, cron.id);
     }
-
-    let seconds = match unit.trim_end_matches('s') {
-        "second" => amount,
-        "minute" => amount * 60.0,
-        "hour" => amount * 60.0 * 60.0,
-        "day" => amount * 60.0 * 60.0 * 24.0,
-        _ => return Err(format!("unsupported interval unit `{unit}`")),
-    };
-
-    Ok(Duration::from_secs(seconds.round().max(1.0) as u64))
 }

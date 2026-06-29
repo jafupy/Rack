@@ -3,7 +3,7 @@ mod cron;
 mod http;
 mod response;
 
-pub use cron::Cron;
+pub use cron::{Cron, CronEvent};
 pub use http::Request;
 pub use rack_sdk_macro::{cron, route};
 pub use response::{Error, IntoResponse, Response, Result};
@@ -28,5 +28,5 @@ extern "C" {
 
 #[doc(hidden)]
 pub mod __private {
-    pub use crate::abi::run_http;
+    pub use crate::abi::{read_cron_event, run_http};
 }

@@ -1,3 +1,4 @@
+mod schedule;
 mod scheduler;
 
 use std::{fs, path::PathBuf, sync::Arc};

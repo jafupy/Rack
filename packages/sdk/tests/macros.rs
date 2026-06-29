@@ -1,4 +1,4 @@
-use rack::{Request, Response};
+use rack::{CronEvent, Request, Response};
 
 #[rack::route(GET, "gscse")]
 fn gscse(_request: Request) -> Response {
@@ -12,6 +12,9 @@ fn fallible(_request: Request) -> rack::Result<Response> {
 
 #[rack::cron("every minute")]
 fn tick() {}
+
+#[rack::cron("weekdays at 9:30am")]
+fn tick_with_event(_event: CronEvent) {}
 
 #[test]
 fn route_macro_keeps_function_callable() {
@@ -32,4 +35,14 @@ fn route_macro_accepts_result_response_handlers() {
 #[test]
 fn cron_macro_keeps_function_callable() {
     tick();
+}
+
+#[test]
+fn cron_macro_accepts_event_handlers() {
+    tick_with_event(CronEvent {
+        package: "demo".into(),
+        hook: "tick_with_event".into(),
+        schedule: "weekdays at 9:30am".into(),
+        scheduled_at_unix: 42,
+    });
 }

@@ -1,4 +1,4 @@
-use crate::{IntoResponse, Request};
+use crate::{CronEvent, IntoResponse, Request};
 
 #[no_mangle]
 pub extern "C" fn rack_alloc(len: i32) -> i32 {
@@ -21,6 +21,12 @@ pub fn run_http<R: IntoResponse>(handler: fn(Request) -> R, req_ptr: i32, req_le
     let bytes = serde_json::to_vec(&response).expect("serialize hook response");
     let (ptr, len) = leak_bytes(bytes);
     pack_ptr_len(ptr, len)
+}
+
+pub fn read_cron_event(ptr: i32, len: i32) -> CronEvent {
+    let len = usize::try_from(len).expect("negative cron event length");
+    let bytes = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
+    serde_json::from_slice(bytes).expect("deserialize cron event")
 }
 
 fn read_request(ptr: i32, len: i32) -> Request {
