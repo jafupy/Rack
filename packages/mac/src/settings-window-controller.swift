@@ -77,6 +77,10 @@ final class SettingsWindowController {
       },
       installCLI: {
         CLIInstaller().install()
+      },
+      quit: {
+        model.stopAll()
+        NSApplication.shared.terminate(nil)
       }
     )
   }

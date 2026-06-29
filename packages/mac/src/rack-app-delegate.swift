@@ -76,17 +76,17 @@ private enum RackURLAction {
       return
     }
 
-    if host == "hooks", path.first == "reload" {
+    if host == "hooks" || host == "functions", path.first == "reload" {
       self = .reloadHooks
       return
     }
 
-    if host == "reload-hooks" || host == "hooks-reload" {
+    if host == "reload-hooks" || host == "hooks-reload" || host == "functions-reload" {
       self = .reloadHooks
       return
     }
 
-    if host == "services" || host == "service", path.first == "stop-all" {
+    if ["services", "service", "servers", "server"].contains(host), path.first == "stop-all" {
       self = .stopAllServices
       return
     }
@@ -96,7 +96,7 @@ private enum RackURLAction {
       return
     }
 
-    if host == "service" || host == "services" {
+    if ["service", "services", "server", "servers"].contains(host) {
       guard let action = path.first else { return nil }
       let pathID = rawPath.dropFirst().first
       self.init(serviceAction: action, id: id ?? pathID)

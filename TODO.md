@@ -48,8 +48,8 @@ Keep in mind:
 - [x] Move `RackIntentBridge.model = model` out of the menu `.task`.
 - [x] Handle app termination.
 - [x] Call runtime shutdown on termination.
-- [ ] Decide whether app termination stops all running services.
-- [ ] Ensure Quit button and normal app quit share shutdown semantics.
+- [x] Decide whether app termination stops all running services.
+- [x] Ensure Quit button and normal app quit share shutdown semantics.
 - [x] Add `rack://` URL scheme to app bundle.
 - [x] Add URL handling in mac package.
 - [x] Add `rack://settings`.
@@ -58,8 +58,8 @@ Keep in mind:
 - [x] Add `rack://service/restart?id=...`.
 - [x] Add `rack://service/stop-all`.
 - [x] Add `rack://hooks/reload`.
-- [ ] Add compat handling for old `rack://server/...` URLs if desired.
-- [ ] Add compat handling for old `rack://functions/reload` if desired.
+- [x] Add compat handling for old `rack://server/...` URLs if desired.
+- [x] Add compat handling for old `rack://functions/reload` if desired.
 - [x] Restore bundled CLI installer.
 - [x] Link bundled CLI to `~/.local/bin/rack`.
 - [ ] Add `~/.local/bin` to user shell profile when safe.
@@ -72,13 +72,13 @@ Keep in mind:
 
 ## Settings UI, built from scratch
 
-- [ ] Build a new Settings window from scratch.
-- [ ] Do not port the current/main Settings implementation directly.
-- [ ] Use `main` only as feature reference for Settings.
-- [ ] Put Settings window ownership in `packages/mac`.
-- [ ] Put Settings SwiftUI views in `packages/ui`.
-- [ ] Build Settings against new rewrite view models/APIs.
-- [ ] Keep Settings views dumb.
+- [x] Build a new Settings window from scratch.
+- [x] Do not port the current/main Settings implementation directly.
+- [x] Use `main` only as feature reference for Settings.
+- [x] Put Settings window ownership in `packages/mac`.
+- [x] Put Settings SwiftUI views in `packages/ui`.
+- [x] Build Settings against new rewrite view models/APIs.
+- [x] Keep Settings views dumb.
 - [x] Add Settings shell/sidebar/tabs.
 - [x] Add General page.
 - [x] Add Services page.
@@ -102,7 +102,7 @@ Keep in mind:
 - [ ] Show config parse errors.
 - [ ] Add standard ports toggle once runtime support exists.
 - [ ] Show standard ports status/errors.
-- [ ] Add quit action.
+- [x] Add quit action.
 - [ ] Add about/version info if useful.
 
 ## Menu bar UI
@@ -125,8 +125,8 @@ Keep in mind:
 - [x] Add open logs action.
 - [ ] Add open working directory action if useful.
 - [x] Add hooks summary section if useful.
-- [ ] Add hook reload button only if reload actually reloads runtime/proxy/scheduler.
-- [ ] Otherwise label hook action as summary refresh only or omit it.
+- [x] Add hook reload button only if reload actually reloads runtime/proxy/scheduler.
+- [x] Otherwise label hook action as summary refresh only or omit it.
 - [x] Ensure menu does not own runtime state.
 
 ## Service config model
@@ -219,15 +219,15 @@ Keep in mind:
 
 ## Proxy
 
-- [ ] Keep Pingora.
-- [ ] Keep folder structure clean: `server/`, `services/`, `hooks/` style.
-- [ ] Keep proxy focused on routing.
-- [ ] Keep service lifecycle out of proxy.
-- [ ] Let services register origins/destinations with proxy.
-- [ ] Let hooks package dispatch hook requests.
+- [x] Keep Pingora.
+- [x] Keep folder structure clean: `server/`, `services/`, `hooks/` style.
+- [x] Keep proxy focused on routing.
+- [x] Keep service lifecycle out of proxy.
+- [x] Let services register origins/destinations with proxy.
+- [x] Let hooks package dispatch hook requests.
 - [ ] Decide whether nested subdomain fallback is required.
 - [ ] Support `fix-auth.myapp.localhost -> myapp` if required.
-- [ ] Otherwise document nested localhost rejection.
+- [x] Otherwise document nested localhost rejection.
 - [x] Add backend wait/retry while service is starting.
 - [x] Restore loopback proxy loop detection.
 - [x] Return useful `508 Loop Detected` response when needed.
@@ -239,7 +239,7 @@ Keep in mind:
 - [ ] Test Vite HMR.
 - [ ] Test Bun dev server websockets.
 - [ ] Test Next dev server websockets if relevant.
-- [ ] Bind IPv4 loopback.
+- [x] Bind IPv4 loopback.
 - [ ] Bind IPv6 loopback if main parity requires it.
 - [ ] Restore HTTPS listener if required.
 - [ ] Restore local cert generation/trust if required.
@@ -310,16 +310,16 @@ Keep in mind:
 
 - [ ] Decide whether zero-arg `#[rack::route]` compatibility is required.
 - [ ] Decide whether zero-arg `#[rack::cron]` compatibility is required.
-- [ ] Keep new `#[rack::route(GET, "path")]` syntax.
-- [ ] Keep new `#[rack::cron("every 5 minutes")]` syntax.
+- [x] Keep new `#[rack::route(GET, "path")]` syntax.
+- [x] Keep new `#[rack::cron("every 5 minutes")]` syntax.
 - [ ] Add/restore `#[rack::payload]` if needed.
 - [ ] Add `Payload` trait.
 - [ ] Add typed `Request<T>`.
 - [ ] Add JSON body parsing.
 - [ ] Add `String` payload support.
 - [ ] Add `()` payload support.
-- [ ] Restore handler `Result<Response>` support.
-- [ ] Restore `?` support in handlers.
+- [x] Restore handler `Result<Response>` support.
+- [x] Restore `?` support in handlers.
 - [ ] Map bad payload to 400.
 - [ ] Map handler errors to 500.
 - [x] Expose request method.
@@ -353,7 +353,7 @@ Keep in mind:
 
 ## Cron hooks
 
-- [ ] Keep interval schedules working.
+- [x] Keep interval schedules working.
 - [x] Add calendar schedule parser if required.
 - [x] Support `friday at 17:00` if required.
 - [x] Support `weekdays at 9:30am` if required.
@@ -445,25 +445,25 @@ Keep in mind:
 
 ## FFI / bridge
 
-- [ ] Keep bespoke bridge; do not switch to UniFFI.
-- [ ] Keep per-package `ffi/` folders where useful.
-- [ ] Keep FFI functions thin.
-- [ ] FFI should call native package functions and nothing else.
-- [ ] Standardize struct layout/order.
-- [ ] Keep ABI version checks.
-- [ ] Keep struct size checks.
-- [ ] Add config mutation FFI.
-- [ ] Add restart FFI.
+- [x] Keep bespoke bridge; do not switch to UniFFI.
+- [x] Keep per-package `ffi/` folders where useful.
+- [x] Keep FFI functions thin.
+- [x] FFI should call native package functions and nothing else.
+- [x] Standardize struct layout/order.
+- [x] Keep ABI version checks.
+- [x] Keep struct size checks.
+- [x] Add config mutation FFI.
+- [x] Add restart FFI.
 - [x] Add failed-state FFI.
 - [x] Add config path FFI.
 - [x] Add hook reload FFI when real reload exists.
 - [ ] Add hook summaries/errors FFI improvements.
-- [ ] Avoid returning dangling pointers.
-- [ ] Clearly define ownership for Rust-allocated memory.
-- [ ] Clearly define ownership for Swift-provided buffers.
+- [x] Avoid returning dangling pointers.
+- [x] Clearly define ownership for Rust-allocated memory.
+- [x] Clearly define ownership for Swift-provided buffers.
 - [ ] Add tests or compile-time checks where possible.
-- [ ] Keep Swift ABI declarations grouped and small.
-- [ ] Keep safe Swift client separate from raw ABI.
+- [x] Keep Swift ABI declarations grouped and small.
+- [x] Keep safe Swift client separate from raw ABI.
 
 ## Standard ports / DNS / local networking
 
@@ -571,16 +571,16 @@ Keep in mind:
 
 ## Suggested next order
 
-- [ ] Build Settings shell from scratch.
-- [ ] Add config/service mutation APIs.
-- [ ] Add service add/edit/remove UI.
-- [ ] Add lifecycle owner/AppDelegate.
-- [ ] Add URL scheme.
-- [ ] Add restart end-to-end.
-- [ ] Add service failed/readiness states.
-- [ ] Add hook list/remove/test CLI.
+- [x] Build Settings shell from scratch.
+- [x] Add config/service mutation APIs.
+- [x] Add service add/edit/remove UI.
+- [x] Add lifecycle owner/AppDelegate.
+- [x] Add URL scheme.
+- [x] Add restart end-to-end.
+- [x] Add service failed/readiness states.
+- [x] Add hook list/remove/test CLI.
 - [ ] Fill hook SDK request/response gaps.
 - [x] Add cron calendar/event parity.
-- [ ] Verify/fix WebSocket proxying.
+- [x] Verify/fix WebSocket proxying.
 - [ ] Decide standard ports/HTTPS scope.
 - [ ] Add docs/release polish.

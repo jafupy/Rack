@@ -28,19 +28,22 @@ public struct GeneralSettingsActions {
   public var revealConfig: () -> Void
   public var openConfig: () -> Void
   public var installCLI: () -> String
+  public var quit: () -> Void
 
   public init(
     setLaunchAtLogin: @escaping (Bool) -> String? = { _ in nil },
     setTerminalName: @escaping (String) throws -> Void = { _ in },
     revealConfig: @escaping () -> Void = {},
     openConfig: @escaping () -> Void = {},
-    installCLI: @escaping () -> String = { "CLI installer is not available in this build." }
+    installCLI: @escaping () -> String = { "CLI installer is not available in this build." },
+    quit: @escaping () -> Void = {}
   ) {
     self.setLaunchAtLogin = setLaunchAtLogin
     self.setTerminalName = setTerminalName
     self.revealConfig = revealConfig
     self.openConfig = openConfig
     self.installCLI = installCLI
+    self.quit = quit
   }
 }
 
@@ -137,6 +140,18 @@ struct GeneralSettingsPage: View {
           if let cliInstallMessage {
             Text(cliInstallMessage).font(.caption).foregroundStyle(.secondary)
           }
+        }
+      }
+
+      SettingsCard {
+        HStack {
+          VStack(alignment: .leading, spacing: 4) {
+            Text("Quit Rack").font(.headline)
+            Text("Stops running services and exits the menu bar app.")
+              .foregroundStyle(.secondary)
+          }
+          Spacer()
+          Button("Quit", role: .destructive) { actions.quit() }
         }
       }
     }
