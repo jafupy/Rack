@@ -79,14 +79,14 @@ Keep in mind:
 - [ ] Put Settings SwiftUI views in `packages/ui`.
 - [ ] Build Settings against new rewrite view models/APIs.
 - [ ] Keep Settings views dumb.
-- [ ] Add Settings shell/sidebar/tabs.
-- [ ] Add General page.
-- [ ] Add Services page.
-- [ ] Add Hooks page.
+- [x] Add Settings shell/sidebar/tabs.
+- [x] Add General page.
+- [x] Add Services page.
+- [x] Add Hooks page.
 - [ ] Add Network/Ports page if that feels cleaner than General.
 - [ ] Wire menu bar gear button to open Settings.
-- [ ] Wire “Add Service” empty-state/menu action to open Settings or add-service flow.
-- [ ] Make Settings usable without menu bar popover state.
+- [x] Wire “Add Service” empty-state/menu action to open Settings or add-service flow.
+- [x] Make Settings usable without menu bar popover state.
 - [ ] Add launch-at-login toggle.
 - [ ] Show launch-at-login status/errors.
 - [ ] Add terminal picker.
@@ -116,8 +116,8 @@ Keep in mind:
 - [ ] Add restart only where it is semantically correct.
 - [ ] Keep logs preview.
 - [ ] Keep ANSI formatting in logs preview.
-- [ ] Show failed service state when runtime supports it.
-- [ ] Show starting state clearly.
+- [x] Show failed service state when runtime supports it.
+- [x] Show starting state clearly.
 - [ ] Show detected backend port(s) if useful.
 - [ ] Show local service URL.
 - [ ] Add copy URL action.
@@ -153,19 +153,19 @@ Keep in mind:
 
 ## Service runtime
 
-- [ ] Add service add API.
-- [ ] Add service edit API.
-- [ ] Add service remove API.
+- [x] Add service add API.
+- [x] Add service edit API.
+- [x] Add service remove API.
 - [ ] Add service duplicate API if wanted.
-- [ ] Add service restart API.
-- [ ] Add restart to FFI.
-- [ ] Add restart to Swift client.
-- [ ] Add restart to view model.
-- [ ] Add restart App Intent.
-- [ ] Add failed service state.
-- [ ] Add readiness timeout.
-- [ ] Avoid services stuck in `Starting` forever.
-- [ ] Surface readiness failure message.
+- [x] Add service restart API.
+- [x] Add restart to FFI.
+- [x] Add restart to Swift client.
+- [x] Add restart to view model.
+- [x] Add restart App Intent.
+- [x] Add failed service state.
+- [x] Add readiness timeout.
+- [x] Avoid services stuck in `Starting` forever.
+- [x] Surface readiness failure message.
 - [ ] Track process exit reason where possible.
 - [ ] Track process group cleanly.
 - [ ] Keep registry as source of truth.
@@ -194,22 +194,22 @@ Keep in mind:
 
 ## Service UI/settings
 
-- [ ] Add add-service form from scratch.
-- [ ] Add edit-service form from scratch.
-- [ ] Add remove confirmation.
+- [x] Add add-service form from scratch.
+- [x] Add edit-service form from scratch.
+- [x] Add remove confirmation.
 - [ ] Add duplicate action if kept.
 - [ ] Add per-service detail panel from scratch.
-- [ ] Add fields for name.
-- [ ] Add field for host.
-- [ ] Add field for run command.
-- [ ] Add field for working directory.
-- [ ] Add field for auto-start.
+- [x] Add fields for name.
+- [x] Add field for host.
+- [x] Add field for run command.
+- [x] Add field for working directory.
+- [x] Add field for auto-start.
 - [ ] Add environment variable editor if env is restored.
 - [ ] Add custom domain field if custom domains are restored.
 - [ ] Add explicit port field if explicit ports are restored.
 - [ ] Add command arguments UI if args are restored.
 - [ ] Add validation messages.
-- [ ] Add save/cancel flow.
+- [x] Add save/cancel flow.
 - [ ] Add dirty-state handling.
 - [ ] Add recent output in detail panel.
 - [ ] Add open full logs action.
@@ -373,10 +373,10 @@ Keep in mind:
 
 ## Hook CLI
 
-- [ ] Add `rack hook list`.
-- [ ] Add `rack hook ls` alias.
-- [ ] Add `rack hook remove`.
-- [ ] Add `rack hook rm` alias.
+- [x] Add `rack hook list`.
+- [x] Add `rack hook ls` alias.
+- [x] Add `rack hook remove`.
+- [x] Add `rack hook rm` alias.
 - [ ] Add `rack hook uninstall` alias if useful.
 - [ ] Add `rack hook test`.
 - [ ] Add `rack hook install` if deploy should not cover it.
@@ -420,12 +420,12 @@ Keep in mind:
 - [ ] Support service lookup by ID.
 - [ ] Support service lookup by name if useful.
 - [ ] Support service lookup by host if useful.
-- [ ] Add `rack service edit`.
-- [ ] Add `rack service restart`.
+- [x] Add `rack service edit`.
+- [x] Add `rack service restart`.
 - [ ] Add `rack service duplicate` if useful.
 - [ ] Improve `rack service list` URLs.
 - [ ] Include proxy port in URL when not using standard ports.
-- [ ] Show starting/running/stopped/failed state.
+- [x] Show starting/running/stopped/failed state.
 - [ ] Show detected backend port(s).
 - [ ] Add machine-readable output if useful.
 - [ ] Align control socket path with app.
@@ -454,7 +454,7 @@ Keep in mind:
 - [ ] Keep struct size checks.
 - [ ] Add config mutation FFI.
 - [ ] Add restart FFI.
-- [ ] Add failed-state FFI.
+- [x] Add failed-state FFI.
 - [ ] Add config path FFI.
 - [ ] Add hook reload FFI when real reload exists.
 - [ ] Add hook summaries/errors FFI improvements.
@@ -507,8 +507,8 @@ Keep in mind:
 - [ ] Add core validation tests for any restored fields.
 - [ ] Add services lifecycle tests.
 - [ ] Add services restart tests.
-- [ ] Add services failed readiness tests.
-- [ ] Add services readiness timeout tests.
+- [x] Add services failed readiness tests.
+- [x] Add services readiness timeout tests.
 - [ ] Add services env merge tests.
 - [ ] Add services log tests.
 - [ ] Add services FFI ABI tests.
@@ -530,7 +530,7 @@ Keep in mind:
 - [ ] Add hooks cron calendar tests.
 - [ ] Add hooks logging tests.
 - [ ] Add CLI service integration tests.
-- [ ] Add CLI hook lifecycle tests.
+- [x] Add CLI hook lifecycle tests.
 - [ ] Add Swift/manual QA checklist.
 - [ ] Test menu opens and displays services.
 - [ ] Test start/stop/restart from menu.
