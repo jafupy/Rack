@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 
 pub fn run(path: &str) -> Result<()> {
     let status = Command::new("cargo")
-        .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
+        .args(["rack-build"])
         .current_dir(path)
         .status()
         .with_context(|| format!("failed to run cargo for hook at {path}"))?;

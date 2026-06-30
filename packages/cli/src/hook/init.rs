@@ -5,6 +5,7 @@ use anyhow::{bail, Result};
 use super::common::{install_sdk, sdk_path};
 
 const CARGO_TEMPLATE: &str = include_str!("../../../hooks/public/Cargo.toml");
+const CARGO_CONFIG: &str = include_str!("../../../hooks/public/config.toml");
 const LIB_TEMPLATE: &str = include_str!("../../../hooks/public/lib.rs");
 
 pub fn run(path: &str) -> Result<()> {
@@ -14,8 +15,10 @@ pub fn run(path: &str) -> Result<()> {
     }
 
     install_sdk()?;
+    fs::create_dir_all(path.join(".cargo"))?;
     fs::create_dir_all(path.join("src"))?;
     fs::write(path.join("Cargo.toml"), cargo_toml(path)?)?;
+    fs::write(path.join(".cargo/config.toml"), CARGO_CONFIG)?;
     fs::write(path.join("src/lib.rs"), LIB_TEMPLATE)?;
 
     println!("Initialized hook at {}", path.display());

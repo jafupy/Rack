@@ -27,6 +27,26 @@ fn hook_ls_lists_deployed_hook_errors() {
 }
 
 #[test]
+fn hook_init_writes_build_config_and_local_sdk() {
+    let home = temp_home("hook-init");
+    let hook = home.join("demo-hook");
+
+    let output = rack(&home, ["hook", "init", hook.to_str().unwrap()]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(hook.join("Cargo.toml").exists());
+    assert!(hook.join(".cargo/config.toml").exists());
+    assert!(home.join(".rack/sdk").exists());
+    assert!(home.join(".rack/sdk-macro").exists());
+    assert!(fs::read_to_string(hook.join("Cargo.toml"))
+        .unwrap()
+        .contains(".rack/sdk"));
+    assert!(fs::read_to_string(hook.join(".cargo/config.toml"))
+        .unwrap()
+        .contains("wasm32-unknown-unknown"));
+}
+
+#[test]
 fn hook_test_help_exposes_selectors() {
     let home = temp_home("hook-test-help");
 
