@@ -1,5 +1,4 @@
 mod backfill;
-mod legacy;
 mod parse;
 mod preamble;
 mod validate;

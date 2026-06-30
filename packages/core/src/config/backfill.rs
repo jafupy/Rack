@@ -23,21 +23,6 @@ pub enum BackfillError {
     #[error("failed to read config at `{path}`: {source}")]
     ReadConfig { path: PathBuf, source: io::Error },
 
-    #[error("failed to read legacy JSON config at `{path}`: {source}")]
-    ReadLegacyConfig { path: PathBuf, source: io::Error },
-
-    #[error("failed to parse legacy JSON config at `{path}`: {source}")]
-    ParseLegacyJson {
-        path: PathBuf,
-        source: serde_json::Error,
-    },
-
-    #[error("failed to create config directory `{path}` for migrated TOML config: {source}")]
-    CreateMigratedConfigDirectory { path: PathBuf, source: io::Error },
-
-    #[error("failed to write migrated TOML config at `{path}`: {source}")]
-    WriteMigratedConfig { path: PathBuf, source: io::Error },
-
     #[error("failed to create cache directory `{path}`: {source}")]
     CreateCacheDirectory { path: PathBuf, source: io::Error },
 
@@ -59,10 +44,9 @@ pub enum BackfillError {
 /// `~/Library/Caches/Rack/config.full.toml`, and returns the in-memory
 /// backfilled config.
 ///
-/// Existing TOML source config files are not rewritten. If the TOML source
-/// config is missing and a legacy JSON config exists, it is migrated once to
-/// TOML. If no source config exists, this uses the bundled default config and
-/// caches the effective config without creating the source config file.
+/// Existing TOML source config files are not rewritten. If no source config
+/// exists, this uses the bundled default config and caches the effective config
+/// without creating the source config file.
 ///
 /// Config lookup order is:
 /// 1. `$XDG_CONFIG_HOME/rack/config.toml`
@@ -122,9 +106,7 @@ fn backfill_at_with_cache_path(
 ) -> Result<Config, BackfillError> {
     let input = match fs::read_to_string(&config_path) {
         Ok(input) => input,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            super::legacy::migrate_if_needed(&config_path)?.unwrap_or_default()
-        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
         Err(source) => {
             return Err(BackfillError::ReadConfig {
                 path: config_path,
@@ -367,44 +349,6 @@ run = "cargo run"
         assert!(cached.contains("[[services]]"));
 
         let _ = fs::remove_file(config_path);
-        let _ = fs::remove_file(cache_path);
-    }
-
-    #[test]
-    fn existing_source_toml_wins_over_legacy_json() {
-        let config_path = unique_temp_path("existing-config");
-        let legacy_path = unique_temp_path("ignored-legacy-config-json");
-        let cache_path = unique_temp_path("existing-cache");
-        let source = r#"# RACK:V1
-
-use_standard_ports = true
-terminal = "Terminal.app"
-
-[[services]]
-id = "toml"
-name = "TOML"
-host = "toml"
-run = "cargo run"
-working_dir = "~"
-auto_start = false
-"#;
-        fs::write(&config_path, source).unwrap();
-        fs::write(
-            &legacy_path,
-            r#"{"servers":[{"id":"json","name":"JSON","command":"npm","arguments":"run dev"}]}"#,
-        )
-        .unwrap();
-
-        let config = backfill_at_with_cache_path(config_path.clone(), cache_path.clone()).unwrap();
-        let source_after_backfill = fs::read_to_string(&config_path).unwrap();
-
-        assert_eq!(source_after_backfill, source);
-        assert_eq!(config.terminal, "Terminal.app");
-        assert_eq!(config.services.len(), 1);
-        assert_eq!(config.services[0].id, "toml");
-
-        let _ = fs::remove_file(config_path);
-        let _ = fs::remove_file(legacy_path);
         let _ = fs::remove_file(cache_path);
     }
 

@@ -68,31 +68,8 @@ Rack also writes a generated, fully backfilled cache for runtime consumers at:
 
 Do not edit the generated cache directly.
 
-## Legacy JSON migration
+Rack does not migrate old JSON config. The rewrite uses TOML only. Legacy per-service environment variables, custom domains, explicit ports, command arguments, and port flags are intentionally not part of the rewrite TOML schema. The rewrite keeps one shell `run` command, detects the loopback port opened by the process, and routes to that detected port.
 
-On load, existing TOML always wins and is not rewritten by the backfill path.
-
-If `config.toml` is missing, Rack looks for old JSON service config in this order:
-
-1. `$XDG_CONFIG_HOME/rack/config.json`
-2. `~/.config/rack/config.json`
-3. `~/.config/server-bar/config.json`
-4. `~/Library/Application Support/ServerBar/servers.json`
-
-When a legacy JSON file is found, Rack writes a one-time TOML migration to the current source config path and then loads/caches that TOML.
-
-Legacy server fields are mapped as follows:
-
-| Legacy JSON | Rewrite TOML |
-| --- | --- |
-| `id` | `services[].id` |
-| `name` | `services[].name` |
-| `customDomain` or `name` | `services[].host`, lowercased, spaces changed to `-`, trailing `.localhost` removed |
-| `command` + `arguments` | `services[].run` |
-| `workingDirectory` | `services[].working_dir`, or `~` when blank |
-| `autoStart` | `services[].auto_start` |
-
-Legacy per-service environment variables, custom domains, explicit ports, command arguments, and port flags are intentionally not part of the rewrite TOML schema. The rewrite keeps one shell `run` command, detects the loopback port opened by the process, and routes to that detected port.
 
 ## Service model
 
@@ -207,7 +184,7 @@ Legacy `rack://server/...` and `rack://functions/reload` aliases are accepted.
 - Confirm `cargo test -p rack-core` passes after config changes.
 - Confirm a fresh launch without config uses defaults and only writes the generated cache.
 - Confirm launch with an existing `config.toml` preserves that source file.
-- Confirm launch with only legacy JSON writes `config.toml` once and preserves the legacy JSON file.
+
 - Confirm `dist/rack.app` includes `Contents/Frameworks/librack_services.dylib` and `Contents/Resources/rack-cli`.
 - Confirm `rack://settings`, service actions, and hook reload URLs work from a built app.
 - Confirm Settings add/edit/remove service works and persists TOML.

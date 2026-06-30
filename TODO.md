@@ -140,9 +140,9 @@ Keep in mind:
 - [x] Keep `host` mapping to `<host>.localhost`.
 - [x] Keep `working_dir`.
 - [x] Keep `auto_start`.
-- [x] Add config migration if old JSON config should be imported automatically.
-- [x] Map old `config.json` services to new TOML where possible.
-- [x] Preserve existing users’ service definitions where possible.
+- [x] Do not migrate old JSON config.
+- [x] Remove old `config.json` migration path.
+- [x] Keep TOML as the only source config format.
 - [x] Keep normal load from source TOML read-only.
 - [x] Keep generated/backfilled cache separate if needed.
 - [x] Add validation for any restored fields.
@@ -486,7 +486,7 @@ Keep in mind:
 - [x] Document package layout.
 - [x] Document TOML config path.
 - [x] Document services config format.
-- [x] Document config migration if added.
+- [x] Document that legacy JSON config is not migrated.
 - [x] Document service no-explicit-port model.
 - [x] Document proxy host model.
 - [x] Document `rack.local` hooks.
@@ -502,7 +502,7 @@ Keep in mind:
 
 ## Tests
 
-- [x] Add core config migration tests.
+- [x] Remove core config migration tests.
 - [x] Add core config write/update tests.
 - [x] Add core validation tests for any restored fields.
 - [ ] Add services lifecycle tests.
