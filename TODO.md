@@ -487,18 +487,18 @@ Keep in mind:
 - [x] Document TOML config path.
 - [x] Document services config format.
 - [x] Document config migration if added.
-- [ ] Document service no-explicit-port model.
-- [ ] Document proxy host model.
-- [ ] Document `rack.local` hooks.
-- [ ] Document hook SDK.
-- [ ] Document proc macro metadata.
-- [ ] Document hook deploy layout.
-- [ ] Document CLI service commands.
-- [ ] Document CLI hook commands.
-- [ ] Document App Intents/Shortcuts.
-- [ ] Document URL scheme.
+- [x] Document service no-explicit-port model.
+- [x] Document proxy host model.
+- [x] Document `rack.local` hooks.
+- [x] Document hook SDK.
+- [x] Document proc macro metadata.
+- [x] Document hook deploy layout.
+- [x] Document CLI service commands.
+- [x] Document CLI hook commands.
+- [x] Document App Intents/Shortcuts.
+- [x] Document URL scheme.
 - [ ] Document standard ports/DNS if restored.
-- [ ] Document logs paths.
+- [x] Document logs paths.
 
 ## Tests
 
@@ -549,8 +549,8 @@ Keep in mind:
 - [ ] Add CI for `make swift`.
 - [ ] Add formatting checks.
 - [ ] Add release packaging smoke test.
-- [ ] Ensure app bundle layout is correct.
-- [ ] Ensure Rust artifacts are included correctly.
+- [x] Ensure app bundle layout is correct.
+- [x] Ensure Rust artifacts are included correctly.
 - [x] Ensure bundled CLI works.
 - [x] Ensure CLI installer works.
 - [ ] Ensure app can run from `/Applications`.
@@ -583,4 +583,4 @@ Keep in mind:
 - [x] Add cron calendar/event parity.
 - [x] Verify/fix WebSocket proxying.
 - [ ] Decide standard ports/HTTPS scope.
-- [ ] Add docs/release polish.
+- [x] Add docs/release polish.
