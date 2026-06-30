@@ -1,10 +1,12 @@
+#[path = "build-command.rs"]
 mod build;
 mod common;
 mod deploy;
 mod init;
 mod list;
 mod remove;
-mod test_command;
+#[path = "test-command.rs"]
+mod test;
 
 use anyhow::Result;
 use clap::Subcommand;
@@ -43,7 +45,7 @@ pub fn run(command: Command) -> Result<()> {
         Command::Init { path } => init::run(&path),
         Command::Build { path } => build::run(path.as_deref().unwrap_or(".")),
         Command::Deploy { path } => deploy::run(path.as_deref().unwrap_or(".")),
-        Command::Test { path, hook, route } => test_command::run(
+        Command::Test { path, hook, route } => test::run(
             path.as_deref().unwrap_or("."),
             hook.as_deref(),
             route.as_deref(),
