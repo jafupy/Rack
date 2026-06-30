@@ -377,10 +377,10 @@ Keep in mind:
 - [x] Add `rack hook ls` alias.
 - [x] Add `rack hook remove`.
 - [x] Add `rack hook rm` alias.
-- [ ] Add `rack hook uninstall` alias if useful.
+- [x] Add `rack hook uninstall` alias if useful.
 - [x] Add `rack hook test`.
-- [ ] Add `rack hook install` if deploy should not cover it.
-- [ ] Add `rack hook compile` alias if useful.
+- [x] Add `rack hook install` if deploy should not cover it.
+- [x] Add `rack hook compile` alias if useful.
 - [ ] Add `rack fn ...` compatibility group if desired.
 - [ ] Add `rack hook deploy --replace`.
 - [ ] Add non-destructive copy install mode if desired.
@@ -413,10 +413,10 @@ Keep in mind:
 
 ## CLI services
 
-- [ ] Decide whether to keep top-level `rack ls`.
-- [ ] Decide whether to keep top-level `rack start <name>`.
-- [ ] Decide whether to keep top-level `rack stop <name>`.
-- [ ] Decide whether to keep top-level `rack rm <name>`.
+- [x] Decide whether to keep top-level `rack ls`.
+- [x] Decide whether to keep top-level `rack start <name>`.
+- [x] Decide whether to keep top-level `rack stop <name>`.
+- [x] Decide whether to keep top-level `rack rm <name>`.
 - [x] Support service lookup by ID.
 - [x] Support service lookup by name if useful.
 - [x] Support service lookup by host if useful.

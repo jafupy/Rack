@@ -23,6 +23,21 @@ enum Commands {
         #[command(subcommand)]
         command: HookCommand,
     },
+    #[command(visible_alias = "ls")]
+    List,
+    Start {
+        id: String,
+    },
+    Stop {
+        id: String,
+    },
+    Restart {
+        id: String,
+    },
+    #[command(visible_alias = "rm")]
+    Remove {
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -32,9 +47,11 @@ enum HookCommand {
     Init {
         path: String,
     },
+    #[command(visible_alias = "compile")]
     Build {
         path: Option<String>,
     },
+    #[command(visible_alias = "install")]
     Deploy {
         path: Option<String>,
     },
@@ -45,7 +62,7 @@ enum HookCommand {
         #[arg(long)]
         route: Option<String>,
     },
-    #[command(visible_alias = "rm")]
+    #[command(visible_alias = "rm", visible_alias = "uninstall")]
     Remove {
         name: String,
     },
@@ -63,6 +80,11 @@ fn run() -> Result<()> {
         None => service::run(None),
         Some(Commands::Service { command }) => service::run(command),
         Some(Commands::Hook { command }) => run_hook(command),
+        Some(Commands::List) => service::run(Some(service::Command::List)),
+        Some(Commands::Start { id }) => service::run(Some(service::Command::Start { id })),
+        Some(Commands::Stop { id }) => service::run(Some(service::Command::Stop { id })),
+        Some(Commands::Restart { id }) => service::run(Some(service::Command::Restart { id })),
+        Some(Commands::Remove { id }) => service::run(Some(service::Command::Remove { id })),
     }
 }
 
