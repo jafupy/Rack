@@ -58,6 +58,32 @@ fn errors_for_missing_wasm_cron_export() {
 }
 
 #[test]
+fn rejects_wasm_missing_memory_export() {
+    let registry = HookRegistry::default();
+    let wasm = with_metadata(
+        wat::parse_str(r#"(module (func (export "rack_alloc") (param i32) (result i32) i32.const 0) (func (export "rack_dealloc") (param i32) (param i32)) (func (export "hello") (param i32) (param i32) (result i64) i64.const 0))"#).unwrap(),
+        br#"{"hooks":[{"id":"hello","method":"GET","path":"/hello","entry":"hello"}]}"#,
+    );
+
+    let error = registry.register_wasm(&wasm).unwrap_err().to_string();
+
+    assert_eq!(error, "hook wasm does not export memory");
+}
+
+#[test]
+fn rejects_wasm_missing_route_export() {
+    let registry = HookRegistry::default();
+    let wasm = with_metadata(
+        wat::parse_str(r#"(module (memory (export "memory") 1) (func (export "rack_alloc") (param i32) (result i32) i32.const 0) (func (export "rack_dealloc") (param i32) (param i32)))"#).unwrap(),
+        br#"{"hooks":[{"id":"hello","method":"GET","path":"/hello","entry":"hello"}]}"#,
+    );
+
+    let error = registry.register_wasm(&wasm).unwrap_err().to_string();
+
+    assert_eq!(error, "hook wasm does not export `hello`");
+}
+
+#[test]
 fn rejects_wasm_hook_responses_with_invalid_statuses() {
     let registry = HookRegistry::default();
     registry

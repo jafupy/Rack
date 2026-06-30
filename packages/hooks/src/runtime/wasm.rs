@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use thiserror::Error;
-use wasmtime::{Caller, Engine, Instance, Linker, Memory, Module, Store};
+use wasmtime::{Caller, Config, Engine, ExternType, Instance, Linker, Memory, Module, Store};
 
 use crate::{CronEvent, HookEndpoint, HookRequest, HookResponse};
 
@@ -21,7 +21,7 @@ impl Default for HookRuntime {
 impl HookRuntime {
     pub fn new() -> Self {
         Self {
-            engine: Engine::default(),
+            engine: engine(),
             modules: HashMap::new(),
         }
     }
@@ -29,6 +29,7 @@ impl HookRuntime {
     pub fn load_module(&mut self, wasm: &[u8]) -> Result<Vec<HookEndpoint>, RuntimeError> {
         let metadata = load_metadata(wasm)?;
         let module = Module::from_binary(&self.engine, wasm)?;
+        validate_module_exports(&module, &metadata.hooks)?;
         let mut endpoints = Vec::new();
 
         for hook in metadata.hooks {
@@ -78,9 +79,10 @@ pub fn run_cron_wasm_with_event(
     entry: &str,
     event: &CronEvent,
 ) -> Result<(), RuntimeError> {
-    let engine = Engine::default();
+    let engine = engine();
     let module = Module::from_binary(&engine, wasm)?;
     let mut store = Store::new(&engine, ());
+    store.set_fuel(HOOK_FUEL).map_err(RuntimeError::from)?;
     let instance = instantiate(&engine, &mut store, &module)?;
 
     if let Ok(entry_func) = instance.get_typed_func::<(i32, i32), ()>(&mut store, entry) {
@@ -107,6 +109,7 @@ struct WasmModule {
 impl WasmModule {
     fn run(&self, engine: &Engine, request: &HookRequest) -> Result<HookResponse, RuntimeError> {
         let mut store = Store::new(engine, ());
+        store.set_fuel(HOOK_FUEL).map_err(RuntimeError::from)?;
         let instance = instantiate(engine, &mut store, &self.module)?;
         let memory = memory(&mut store, &instance)?;
         let alloc = instance.get_typed_func::<i32, i32>(&mut store, "rack_alloc")?;
@@ -147,6 +150,12 @@ pub enum RuntimeError {
     #[error("hook wasm does not export memory")]
     MissingMemory,
 
+    #[error("hook wasm does not export `{0}`")]
+    MissingExport(String),
+
+    #[error("hook wasm export `{0}` has the wrong type")]
+    InvalidExport(String),
+
     #[error("hook wasm memory access is out of bounds")]
     MemoryBounds,
 
@@ -155,6 +164,46 @@ pub enum RuntimeError {
 
     #[error(transparent)]
     InvalidResponse(#[from] crate::InvalidHookResponse),
+}
+
+const HOOK_FUEL: u64 = 10_000_000;
+
+fn engine() -> Engine {
+    let mut config = Config::new();
+    config.consume_fuel(true);
+    Engine::new(&config).expect("create hook wasm engine")
+}
+
+fn validate_module_exports(
+    module: &Module,
+    hooks: &[super::WasmHookEndpoint],
+) -> Result<(), RuntimeError> {
+    require_memory(module)?;
+    require_func(module, "rack_alloc")?;
+    require_func(module, "rack_dealloc")?;
+    for hook in hooks {
+        match hook {
+            super::WasmHookEndpoint::Http { entry, .. }
+            | super::WasmHookEndpoint::Cron { entry, .. } => require_func(module, entry)?,
+        }
+    }
+    Ok(())
+}
+
+fn require_memory(module: &Module) -> Result<(), RuntimeError> {
+    match module.get_export("memory") {
+        Some(ExternType::Memory(_)) => Ok(()),
+        Some(_) => Err(RuntimeError::InvalidExport("memory".to_string())),
+        None => Err(RuntimeError::MissingMemory),
+    }
+}
+
+fn require_func(module: &Module, name: &str) -> Result<(), RuntimeError> {
+    match module.get_export(name) {
+        Some(ExternType::Func(_)) => Ok(()),
+        Some(_) => Err(RuntimeError::InvalidExport(name.to_string())),
+        None => Err(RuntimeError::MissingExport(name.to_string())),
+    }
 }
 
 fn instantiate(

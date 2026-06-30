@@ -265,13 +265,13 @@ Keep in mind:
 - [ ] Add cron IDs if needed.
 - [ ] Add hook load error summaries.
 - [ ] Show metadata parse errors in UI/CLI.
-- [ ] Validate required exports at load/deploy time.
-- [ ] Validate required memory export.
-- [ ] Validate alloc/dealloc exports.
-- [ ] Validate route entry exports.
-- [ ] Validate cron entry exports.
-- [ ] Add timeout/fuel/epoch interruption for in-process Wasmtime.
-- [ ] Prevent hanging hooks from blocking runtime threads forever.
+- [x] Validate required exports at load/deploy time.
+- [x] Validate required memory export.
+- [x] Validate alloc/dealloc exports.
+- [x] Validate route entry exports.
+- [x] Validate cron entry exports.
+- [x] Add timeout/fuel/epoch interruption for in-process Wasmtime.
+- [x] Prevent hanging hooks from blocking runtime threads forever.
 - [x] Harden guest pointer/length handling.
 - [x] Use checked arithmetic for pointer + length.
 - [x] Handle negative guest lengths safely.
@@ -525,7 +525,7 @@ Keep in mind:
 - [x] Add hooks request metadata tests.
 - [x] Add hooks response normalization tests.
 - [ ] Add hooks timeout tests.
-- [ ] Add hooks malformed guest ABI tests.
+- [x] Add hooks malformed guest ABI tests.
 - [ ] Add hooks cron interval tests.
 - [x] Add hooks cron calendar tests.
 - [ ] Add hooks logging tests.
