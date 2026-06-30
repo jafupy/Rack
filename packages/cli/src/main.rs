@@ -1,5 +1,4 @@
 mod hook;
-mod hook_test;
 mod service;
 
 use anyhow::Result;
@@ -21,7 +20,7 @@ enum Commands {
     },
     Hook {
         #[command(subcommand)]
-        command: HookCommand,
+        command: hook::Command,
     },
     #[command(visible_alias = "ls")]
     List,
@@ -40,34 +39,6 @@ enum Commands {
     },
 }
 
-#[derive(Subcommand)]
-enum HookCommand {
-    #[command(visible_alias = "ls")]
-    List,
-    Init {
-        path: String,
-    },
-    #[command(visible_alias = "compile")]
-    Build {
-        path: Option<String>,
-    },
-    #[command(visible_alias = "install")]
-    Deploy {
-        path: Option<String>,
-    },
-    Test {
-        path: Option<String>,
-        #[arg(long)]
-        hook: Option<String>,
-        #[arg(long)]
-        route: Option<String>,
-    },
-    #[command(visible_alias = "rm", visible_alias = "uninstall")]
-    Remove {
-        name: String,
-    },
-}
-
 fn main() {
     if let Err(error) = run() {
         eprintln!("error: {error}");
@@ -79,26 +50,11 @@ fn run() -> Result<()> {
     match Cli::parse().command {
         None => service::run(None),
         Some(Commands::Service { command }) => service::run(command),
-        Some(Commands::Hook { command }) => run_hook(command),
+        Some(Commands::Hook { command }) => hook::run(command),
         Some(Commands::List) => service::run(Some(service::Command::List)),
         Some(Commands::Start { id }) => service::run(Some(service::Command::Start { id })),
         Some(Commands::Stop { id }) => service::run(Some(service::Command::Stop { id })),
         Some(Commands::Restart { id }) => service::run(Some(service::Command::Restart { id })),
         Some(Commands::Remove { id }) => service::run(Some(service::Command::Remove { id })),
-    }
-}
-
-fn run_hook(command: HookCommand) -> Result<()> {
-    match command {
-        HookCommand::List => hook::list(),
-        HookCommand::Init { path } => hook::init(&path),
-        HookCommand::Build { path } => hook::build(path.as_deref().unwrap_or(".")),
-        HookCommand::Deploy { path } => hook::deploy(path.as_deref().unwrap_or(".")),
-        HookCommand::Test { path, hook, route } => hook_test::run(
-            path.as_deref().unwrap_or("."),
-            hook.as_deref(),
-            route.as_deref(),
-        ),
-        HookCommand::Remove { name } => hook::remove(&name),
     }
 }

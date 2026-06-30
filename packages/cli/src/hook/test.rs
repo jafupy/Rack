@@ -9,8 +9,10 @@ use rack_hooks::{
     WasmHookEndpoint,
 };
 
+use super::build;
+
 pub fn run(path: &str, hook: Option<&str>, route: Option<&str>) -> Result<()> {
-    crate::hook::build(path)?;
+    build::run(path)?;
     let wasm_path = built_wasm_path(Path::new(path))?;
     let wasm = fs::read(&wasm_path)
         .with_context(|| format!("failed to read built wasm at {}", wasm_path.display()))?;
