@@ -1,11 +1,11 @@
-#[path = "build-command.rs"]
+#[path = "build-cmd.rs"]
 mod build;
 mod common;
 mod deploy;
 mod init;
 mod list;
 mod remove;
-#[path = "test-command.rs"]
+#[path = "test-cmd.rs"]
 mod test;
 
 use anyhow::Result;
