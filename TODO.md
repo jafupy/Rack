@@ -131,12 +131,12 @@ Keep in mind:
 
 ## Service config model
 
-- [ ] Decide whether `run` remains one shell command string.
-- [ ] Decide whether to restore separate `command` + `arguments`.
-- [ ] Decide whether to restore per-service environment variables.
-- [ ] Decide whether to restore custom domains.
-- [ ] Decide whether to restore explicit configured ports.
-- [ ] Decide whether to restore `portFlag`.
+- [x] Decide whether `run` remains one shell command string.
+- [x] Decide whether to restore separate `command` + `arguments`.
+- [x] Decide whether to restore per-service environment variables.
+- [x] Decide whether to restore custom domains.
+- [x] Decide whether to restore explicit configured ports.
+- [x] Decide whether to restore `portFlag`.
 - [x] Keep `host` mapping to `<host>.localhost`.
 - [x] Keep `working_dir`.
 - [x] Keep `auto_start`.
@@ -145,7 +145,7 @@ Keep in mind:
 - [x] Preserve existing users’ service definitions where possible.
 - [x] Keep normal load from source TOML read-only.
 - [x] Keep generated/backfilled cache separate if needed.
-- [ ] Add validation for any restored fields.
+- [x] Add validation for any restored fields.
 - [x] Add config write/update APIs.
 - [x] Preserve nice TOML formatting when writing.
 - [x] Expose config path over FFI/control API.
@@ -178,11 +178,11 @@ Keep in mind:
 - [ ] Preserve good UX for opening service URL immediately after clicking start.
 - [ ] Restore or replace login-shell env loading.
 - [x] Merge current process env.
-- [ ] Add per-service env overrides if config supports them.
+- [x] Add per-service env overrides if config supports them.
 - [x] Keep colour env vars for terminal output.
-- [ ] Decide whether to inject `PORT`.
-- [ ] Decide whether to inject `HOST`.
-- [ ] Decide whether to append old `portFlag`.
+- [x] Decide whether to inject `PORT`.
+- [x] Decide whether to inject `HOST`.
+- [x] Decide whether to append old `portFlag`.
 - [ ] Decide whether `rack-bridge` / Unix socket launch path is still needed.
 - [ ] Add Unix socket backend support if needed.
 - [x] Keep local TCP-only model if that is enough.
@@ -204,10 +204,10 @@ Keep in mind:
 - [x] Add field for run command.
 - [x] Add field for working directory.
 - [x] Add field for auto-start.
-- [ ] Add environment variable editor if env is restored.
-- [ ] Add custom domain field if custom domains are restored.
-- [ ] Add explicit port field if explicit ports are restored.
-- [ ] Add command arguments UI if args are restored.
+- [x] Add environment variable editor if env is restored.
+- [x] Add custom domain field if custom domains are restored.
+- [x] Add explicit port field if explicit ports are restored.
+- [x] Add command arguments UI if args are restored.
 - [ ] Add validation messages.
 - [x] Add save/cancel flow.
 - [ ] Add dirty-state handling.
@@ -312,15 +312,15 @@ Keep in mind:
 - [ ] Decide whether zero-arg `#[rack::cron]` compatibility is required.
 - [x] Keep new `#[rack::route(GET, "path")]` syntax.
 - [x] Keep new `#[rack::cron("every 5 minutes")]` syntax.
-- [ ] Add/restore `#[rack::payload]` if needed.
-- [ ] Add `Payload` trait.
-- [ ] Add typed `Request<T>`.
-- [ ] Add JSON body parsing.
-- [ ] Add `String` payload support.
-- [ ] Add `()` payload support.
+- [x] Add/restore `#[rack::payload]` if needed.
+- [x] Add `Payload` trait.
+- [x] Add typed `Request<T>`.
+- [x] Add JSON body parsing.
+- [x] Add `String` payload support.
+- [x] Add `()` payload support.
 - [x] Restore handler `Result<Response>` support.
 - [x] Restore `?` support in handlers.
-- [ ] Map bad payload to 400.
+- [x] Map bad payload to 400.
 - [ ] Map handler errors to 500.
 - [x] Expose request method.
 - [x] Expose request path.
@@ -348,7 +348,7 @@ Keep in mind:
 - [x] Restore `rack::log::warn`.
 - [x] Restore `rack::log::error`.
 - [ ] Restore `rack::fs!` if still part of public SDK.
-- [ ] Add SDK compile tests.
+- [x] Add SDK compile tests.
 - [ ] Add macro invalid-signature tests.
 
 ## Cron hooks
@@ -504,7 +504,7 @@ Keep in mind:
 
 - [x] Add core config migration tests.
 - [x] Add core config write/update tests.
-- [ ] Add core validation tests for any restored fields.
+- [x] Add core validation tests for any restored fields.
 - [ ] Add services lifecycle tests.
 - [ ] Add services restart tests.
 - [x] Add services failed readiness tests.
@@ -579,7 +579,7 @@ Keep in mind:
 - [x] Add restart end-to-end.
 - [x] Add service failed/readiness states.
 - [x] Add hook list/remove/test CLI.
-- [ ] Fill hook SDK request/response gaps.
+- [x] Fill hook SDK request/response gaps.
 - [x] Add cron calendar/event parity.
 - [x] Verify/fix WebSocket proxying.
 - [ ] Decide standard ports/HTTPS scope.

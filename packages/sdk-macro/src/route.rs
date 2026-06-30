@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
-use syn::{parse2, Error, Ident, ItemFn, LitStr, Result, Token};
+use syn::{parse2, Error, FnArg, Ident, ItemFn, LitStr, Result, Token};
 
 use crate::metadata;
 
@@ -36,17 +36,38 @@ fn expand_result(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let entry = wrapper.to_string();
     let method = args.method.to_string();
     let meta = metadata::http(name, &method, &args.path.value(), &entry);
+    let runner = route_runner(&function)?;
 
     Ok(quote! {
         #function
 
         #[export_name = #entry]
         pub extern "C" fn #wrapper(req_ptr: i32, req_len: i32) -> i64 {
-            rack::__private::run_http(#name, req_ptr, req_len)
+            #runner
         }
 
         #meta
     })
+}
+
+fn route_runner(function: &ItemFn) -> Result<TokenStream> {
+    let name = &function.sig.ident;
+    match function.sig.inputs.len() {
+        0 => Ok(quote! { rack::__private::run_http_empty(#name, req_ptr, req_len) }),
+        1 => match function.sig.inputs.first() {
+            Some(FnArg::Typed(_)) => {
+                Ok(quote! { rack::__private::run_http(#name, req_ptr, req_len) })
+            }
+            _ => Err(Error::new_spanned(
+                &function.sig.inputs,
+                "routes cannot take self",
+            )),
+        },
+        _ => Err(Error::new_spanned(
+            &function.sig.inputs,
+            "routes accept zero args or one rack::Request<T> arg",
+        )),
+    }
 }
 
 fn validate_signature(function: &ItemFn) -> Result<()> {

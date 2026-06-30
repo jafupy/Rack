@@ -8,9 +8,14 @@ pub type Result<T = Response> = std::result::Result<T, Error>;
 pub enum Error {
     InvalidStatus(u16),
     Json(String),
+    Message(String),
 }
 
 impl Error {
+    pub fn message(message: impl Into<String>) -> Self {
+        Self::Message(message.into())
+    }
+
     fn invalid_status(status: u16) -> Self {
         Self::InvalidStatus(status)
     }
@@ -20,12 +25,19 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidStatus(status) => write!(f, "invalid HTTP status: {status}"),
-            Self::Json(error) => write!(f, "failed to serialize JSON response: {error}"),
+            Self::Json(error) => write!(f, "JSON error: {error}"),
+            Self::Message(message) => f.write_str(message),
         }
     }
 }
 
 impl error::Error for Error {}
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        Self::Message(error.to_string())
+    }
+}
 
 impl From<serde_json::Error> for Error {
     fn from(error: serde_json::Error) -> Self {

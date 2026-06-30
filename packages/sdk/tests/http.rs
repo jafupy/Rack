@@ -1,4 +1,4 @@
-use rack::{Request, Response};
+use rack::{Payload, Request, Response};
 use serde::Serialize;
 
 #[test]
@@ -38,6 +38,12 @@ fn builds_rich_requests() {
     assert_eq!(request.query, "name=rack");
     assert_eq!(request.header_value("Content-Type"), Some("text/plain"));
     assert_eq!(request.body, b"hello");
+}
+
+#[test]
+fn parses_builtin_payloads() {
+    assert_eq!(String::from_body(b"hello").unwrap(), "hello");
+    assert_eq!(().into_body().unwrap(), Vec::<u8>::new());
 }
 
 #[test]
