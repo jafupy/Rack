@@ -3,7 +3,7 @@ use std::{fs, io, path::PathBuf};
 use thiserror::Error;
 
 use super::{
-    backfill::{cache_config, config_path, format_config, BackfillError},
+    backfill::BackfillError, cache::cache_config, format::format_config, paths::config_path,
     validate_config, Config, Service, ValidationErrors,
 };
 

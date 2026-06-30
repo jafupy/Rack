@@ -1,14 +1,15 @@
 mod backfill;
+mod cache;
+mod format;
 mod parse;
+mod paths;
 mod preamble;
 mod validate;
 mod write;
 
-pub use backfill::{
-    backfill_at, backfill_str, cache_config, cache_config_at, cache_path, config_path, load,
-    BackfillError,
-};
+pub use backfill::{backfill_str, load, BackfillError};
 pub use parse::{parse_full_config, ParseError};
+pub use paths::{cache_path, config_path};
 use serde::{Deserialize, Serialize};
 pub use validate::{validate_config, ValidationError, ValidationErrors};
 pub use write::{
