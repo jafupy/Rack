@@ -545,9 +545,9 @@ Keep in mind:
 
 ## Build / release
 
-- [ ] Add CI for `cargo test`.
-- [ ] Add CI for `make swift`.
-- [ ] Add formatting checks.
+- [x] Add CI for `cargo test`.
+- [x] Add CI for `make swift`.
+- [x] Add formatting checks.
 - [ ] Add release packaging smoke test.
 - [x] Ensure app bundle layout is correct.
 - [x] Ensure Rust artifacts are included correctly.
