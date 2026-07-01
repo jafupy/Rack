@@ -33,10 +33,15 @@ pub extern "C" fn rack_services_service_snapshot_size() -> usize {
 #[no_mangle]
 pub extern "C" fn rack_services_init() -> RackServicesStatus {
     status(|| {
-        let runtime = RackRuntime::init()?;
-        *RUNTIME
+        let mut current = RUNTIME
             .lock()
-            .map_err(|error| FfiError::runtime(error.to_string()))? = Some(runtime);
+            .map_err(|error| FfiError::runtime(error.to_string()))?;
+        if current.is_some() {
+            return Err(FfiError::runtime(
+                "rack services runtime is already initialized",
+            ));
+        }
+        *current = Some(RackRuntime::init()?);
         Ok(())
     })
 }

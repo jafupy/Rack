@@ -47,10 +47,10 @@ impl RackRuntime {
     ) -> Result<crate::snapshot::Snapshot, String> {
         let mut config = config::load().map_err(|error| error.to_string())?;
         config::add_service(&mut config, service.clone()).map_err(|error| error.to_string())?;
+        config::save(&config).map_err(|error| error.to_string())?;
         self.supervisor
             .register(service.clone())
             .map_err(|error| error.to_string())?;
-        config::save(&config).map_err(|error| error.to_string())?;
         self.configs
             .write()
             .map_err(|error| error.to_string())?
@@ -66,24 +66,23 @@ impl RackRuntime {
         let mut config = config::load().map_err(|error| error.to_string())?;
         config::replace_service(&mut config, id, service.clone())
             .map_err(|error| error.to_string())?;
+        config::save(&config).map_err(|error| error.to_string())?;
         self.supervisor
             .update(service.clone())
             .map_err(|error| error.to_string())?;
-        config::save(&config).map_err(|error| error.to_string())?;
-        self.configs
-            .write()
-            .map_err(|error| error.to_string())?
-            .insert(service.id.clone(), service);
+        let mut configs = self.configs.write().map_err(|error| error.to_string())?;
+        configs.remove(id);
+        configs.insert(service.id.clone(), service);
         self.snapshot()
     }
 
     pub fn remove_service(&mut self, id: &str) -> Result<crate::snapshot::Snapshot, String> {
         let mut config = config::load().map_err(|error| error.to_string())?;
         config::remove_service(&mut config, id).map_err(|error| error.to_string())?;
+        config::save(&config).map_err(|error| error.to_string())?;
         self.supervisor
             .unregister(id)
             .map_err(|error| error.to_string())?;
-        config::save(&config).map_err(|error| error.to_string())?;
         self.configs
             .write()
             .map_err(|error| error.to_string())?

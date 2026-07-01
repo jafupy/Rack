@@ -2,11 +2,4 @@
 
 use_standard_ports=false
 terminal="Ghostty"
-
-[[services]]
-id = "A123C23D-DBCB-4689-8A7F-D888B8A47BAE"
-name = "DEFAULT"
-host = "default"
-run = "echo hi"
-working_dir = "~"
-auto_start = true
+services=[]

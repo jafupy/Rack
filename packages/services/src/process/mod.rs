@@ -17,9 +17,10 @@ use rack_core::{config::Service as ServiceConfig, utils::expand_home};
 pub use error::ProcessError;
 use ports::listen_ports;
 pub use ports::parse_listen_ports;
-use signal::terminate_group;
+use signal::{kill_group, terminate_group};
 
-const PORT_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const TERM_GRACE: Duration = Duration::from_secs(3);
+const TERM_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 pub struct Process {
     child: Child,
@@ -75,6 +76,23 @@ impl Process {
 
     pub fn kill(&mut self, id: &str) -> Result<(), ProcessError> {
         terminate_group(id, self.pgid)?;
+
+        let deadline = Instant::now() + TERM_GRACE;
+        while Instant::now() < deadline {
+            if self
+                .has_exited()
+                .map_err(|source| ProcessError::WaitFailed {
+                    service: id.to_string(),
+                    source,
+                })?
+            {
+                let _ = self.child.wait();
+                return Ok(());
+            }
+            thread::sleep(TERM_POLL_INTERVAL);
+        }
+
+        kill_group(id, self.pgid)?;
         let _ = self.child.wait();
         Ok(())
     }
@@ -93,19 +111,6 @@ impl Process {
 
     pub fn readiness_timed_out(&self, timeout: Duration) -> bool {
         self.started_at.elapsed() >= timeout
-    }
-
-    pub fn wait_for_ports(&self, id: &str, timeout: Duration) -> Result<Vec<u16>, ProcessError> {
-        let deadline = Instant::now() + timeout;
-
-        loop {
-            let ports = self.ports(id)?;
-            if !ports.is_empty() || Instant::now() >= deadline {
-                return Ok(ports);
-            }
-
-            thread::sleep(PORT_POLL_INTERVAL);
-        }
     }
 }
 

@@ -16,7 +16,7 @@ let package = Package(
       name: "RackUI",
       path: "packages/ui/src",
       linkerSettings: [
-        .unsafeFlags(["-L", ".build/rust/debug", "-lrack_services"])
+        .unsafeFlags(["-L", ".build/rust/debug/deps", "-lrack_services"])
       ]
     ),
     .executableTarget(

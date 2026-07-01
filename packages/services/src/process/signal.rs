@@ -1,5 +1,3 @@
-use std::{thread, time::Duration};
-
 use nix::{
     errno::Errno,
     sys::signal::{killpg, Signal},
@@ -8,11 +6,11 @@ use nix::{
 
 use super::ProcessError;
 
-const TERM_GRACE: Duration = Duration::from_millis(300);
-
 pub fn terminate_group(service: &str, pgid: i32) -> Result<(), ProcessError> {
-    signal_group(service, pgid, Signal::SIGTERM)?;
-    thread::sleep(TERM_GRACE);
+    signal_group(service, pgid, Signal::SIGTERM)
+}
+
+pub fn kill_group(service: &str, pgid: i32) -> Result<(), ProcessError> {
     signal_group(service, pgid, Signal::SIGKILL)
 }
 

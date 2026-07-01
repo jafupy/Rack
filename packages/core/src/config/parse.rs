@@ -59,15 +59,7 @@ mod tests {
         assert_eq!(config.schema_version, 1);
         assert!(!config.use_standard_ports);
         assert_eq!(config.terminal, "Ghostty");
-        assert_eq!(config.services.len(), 1);
-
-        let service = &config.services[0];
-        assert_eq!(service.id, "A123C23D-DBCB-4689-8A7F-D888B8A47BAE");
-        assert_eq!(service.name, "DEFAULT");
-        assert_eq!(service.host, "default");
-        assert_eq!(service.run, "echo hi");
-        assert_eq!(service.working_dir, "~");
-        assert!(service.auto_start);
+        assert!(config.services.is_empty());
     }
 
     #[test]

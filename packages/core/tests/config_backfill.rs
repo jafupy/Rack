@@ -13,7 +13,7 @@ terminal = "Alacritty"
     assert_eq!(config.schema_version, 1);
     assert!(!config.use_standard_ports);
     assert_eq!(config.terminal, "Alacritty");
-    assert_eq!(config.services.len(), 1);
+    assert!(config.services.is_empty());
 }
 
 #[test]

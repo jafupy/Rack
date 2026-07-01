@@ -96,7 +96,7 @@ impl Supervisor {
         })
     }
 
-    pub fn shutdown(mut self) -> thread::Result<()> {
+    pub fn shutdown(&mut self) -> thread::Result<()> {
         self.stop_thread()
     }
 

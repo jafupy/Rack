@@ -45,14 +45,7 @@ impl Default for Config {
             schema_version: SUPPORTED_SCHEMA_VERSION,
             use_standard_ports: false,
             terminal: "Ghostty".to_string(),
-            services: vec![Service {
-                id: "A123C23D-DBCB-4689-8A7F-D888B8A47BAE".to_string(),
-                name: "DEFAULT".to_string(),
-                host: "default".to_string(),
-                run: "echo hi".to_string(),
-                working_dir: "~".to_string(),
-                auto_start: true,
-            }],
+            services: Vec::new(),
         }
     }
 }
