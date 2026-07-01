@@ -19,7 +19,7 @@ use ports::listen_ports;
 pub use ports::parse_listen_ports;
 use signal::{kill_group, terminate_group};
 
-const TERM_GRACE: Duration = Duration::from_secs(3);
+const DEFAULT_TERM_GRACE: Duration = Duration::from_secs(3);
 const TERM_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 pub struct Process {
@@ -77,19 +77,19 @@ impl Process {
     pub fn kill(&mut self, id: &str) -> Result<(), ProcessError> {
         terminate_group(id, self.pgid)?;
 
-        let deadline = Instant::now() + TERM_GRACE;
+        let deadline = Instant::now() + term_grace();
         while Instant::now() < deadline {
-            if self
-                .has_exited()
-                .map_err(|source| ProcessError::WaitFailed {
-                    service: id.to_string(),
-                    source,
-                })?
-            {
-                let _ = self.child.wait();
-                return Ok(());
+            match self.has_exited() {
+                Ok(true) => {
+                    let _ = self.child.wait();
+                    return Ok(());
+                }
+                Ok(false) => thread::sleep(TERM_POLL_INTERVAL),
+                Err(error) => {
+                    eprintln!("failed to wait for service {id} shutdown: {error}");
+                    break;
+                }
             }
-            thread::sleep(TERM_POLL_INTERVAL);
         }
 
         kill_group(id, self.pgid)?;
@@ -112,6 +112,14 @@ impl Process {
     pub fn readiness_timed_out(&self, timeout: Duration) -> bool {
         self.started_at.elapsed() >= timeout
     }
+}
+
+fn term_grace() -> Duration {
+    env::var("RACK_TERM_GRACE_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(DEFAULT_TERM_GRACE)
 }
 
 fn capture_output(child: &mut Child) -> (Receiver<String>, Vec<JoinHandle<()>>) {

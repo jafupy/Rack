@@ -1,6 +1,7 @@
 import Foundation
 
 let RackServicesStatusOk: UInt32 = 0
+let RackServicesStatusAlreadyInitialized: UInt32 = 4
 let RackServicesStateStopped: UInt32 = 0
 let RackServicesStateStarting: UInt32 = 1
 let RackServicesStateRunning: UInt32 = 2

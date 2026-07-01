@@ -108,8 +108,8 @@ impl RackRuntime {
 impl Drop for RackRuntime {
     fn drop(&mut self) {
         self.hook_scheduler.take();
-        let _ = self.supervisor.shutdown();
         self.control.take();
+        let _ = self.supervisor.shutdown();
         if let Some(proxy) = self.proxy.take() {
             let _ = self.proxy_runtime.block_on(proxy.shutdown());
         }

@@ -75,6 +75,13 @@ impl FfiError {
             message: message.into(),
         }
     }
+
+    pub(super) fn already_initialized() -> Self {
+        Self {
+            code: RackServicesStatusCode::AlreadyInitialized,
+            message: "rack services runtime is already initialized".to_string(),
+        }
+    }
 }
 
 impl From<String> for FfiError {

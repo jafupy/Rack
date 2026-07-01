@@ -2,6 +2,8 @@
 
 import PackageDescription
 
+let rustConfiguration = Context.environment["RACK_RUST_CONFIGURATION"] ?? "debug"
+
 let package = Package(
   name: "Rack",
   platforms: [
@@ -16,7 +18,7 @@ let package = Package(
       name: "RackUI",
       path: "packages/ui/src",
       linkerSettings: [
-        .unsafeFlags(["-L", ".build/rust/debug/deps", "-lrack_services"])
+        .unsafeFlags(["-L", ".build/rust/\(rustConfiguration)/deps", "-lrack_services"])
       ]
     ),
     .executableTarget(

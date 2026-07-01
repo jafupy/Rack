@@ -9,6 +9,7 @@ pub enum RackServicesStatusCode {
     InvalidArgument = 1,
     Runtime = 2,
     Internal = 3,
+    AlreadyInitialized = 4,
 }
 
 #[repr(C)]

@@ -92,7 +92,10 @@ fn run(
 ) {
     while running.load(Ordering::Relaxed) {
         match listener.accept() {
-            Ok((stream, _)) => handle_client(stream, &supervisor, &configs, proxy_port, &targets),
+            Ok((stream, _)) if running.load(Ordering::Relaxed) => {
+                handle_client(stream, &supervisor, &configs, proxy_port, &targets)
+            }
+            Ok(_) => break,
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(50));
             }

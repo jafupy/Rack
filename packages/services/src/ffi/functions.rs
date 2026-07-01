@@ -37,9 +37,7 @@ pub extern "C" fn rack_services_init() -> RackServicesStatus {
             .lock()
             .map_err(|error| FfiError::runtime(error.to_string()))?;
         if current.is_some() {
-            return Err(FfiError::runtime(
-                "rack services runtime is already initialized",
-            ));
+            return Err(FfiError::already_initialized());
         }
         *current = Some(RackRuntime::init()?);
         Ok(())
