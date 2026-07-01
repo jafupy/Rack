@@ -141,7 +141,7 @@ fn term_grace() -> Duration {
         eprintln!("RACK_TERM_GRACE_MS=0 disables graceful shutdown");
     }
     if grace > MAX_TERM_GRACE {
-        eprintln!("RACK_TERM_GRACE_MS exceeds 60000; clamping to 60000");
+        eprintln!("RACK_TERM_GRACE_MS exceeds 60000ms; clamping to 60000ms");
         return MAX_TERM_GRACE;
     }
     grace

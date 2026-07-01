@@ -30,11 +30,13 @@ rust:
 
 swift: rust
 	RACK_RUST_PROFILE_DIR=$(CARGO_PROFILE_DIR) swift build --configuration $(SWIFT_CONFIGURATION)
+	mkdir -p .build
 	RACK_RUST_PROFILE_DIR=$(CARGO_PROFILE_DIR) swift build --configuration $(SWIFT_CONFIGURATION) --show-bin-path > $(SWIFT_BIN_PATH)
 
 app: swift
 	rm -rf $(APP)
 	mkdir -p $(MACOS) $(FRAMEWORKS) $(RESOURCES)
+	test -s $(SWIFT_BIN_PATH)
 	cp "$$(cat $(SWIFT_BIN_PATH))/$(PRODUCT_NAME)" $(MACOS)/$(PRODUCT_NAME)
 	cp $(RUST_LIB) $(FRAMEWORKS)/librack_services.dylib
 	cp $(RUST_CLI) $(RESOURCES)/rack-cli
