@@ -1,6 +1,7 @@
 mod config;
 mod functions;
 mod status;
+mod support;
 mod types;
 
 pub use status::{RackServicesStatus, RackServicesStatusCode};

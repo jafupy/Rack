@@ -1,18 +1,22 @@
+mod configuration;
+mod hooks;
+mod proxy;
+mod services;
+
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, RwLock},
 };
 
 use rack_core::config::{self, Service as ServiceConfig};
-use rack_proxy::{ProxyServer, ServiceTarget, TargetTable};
 
+use self::proxy::{bind_proxy, target_table};
 use crate::{
     control::ControlServer,
-    hooks::{self, HookScheduler, HookSummary},
-    registry::{Registry, ServiceState, ServiceView},
+    hooks::{self as hook_registry, HookScheduler, HookSummary},
+    registry::{Registry, ServiceView},
     snapshot::{snapshot_service, Snapshot},
-    supervisor::{log::service_log_path, Supervisor},
+    supervisor::Supervisor,
 };
 
 pub(crate) type SharedServiceConfigs = Arc<RwLock<HashMap<String, ServiceConfig>>>;
@@ -21,7 +25,7 @@ pub struct RackRuntime {
     supervisor: Supervisor,
     configs: SharedServiceConfigs,
     proxy_runtime: tokio::runtime::Runtime,
-    proxy: Option<ProxyServer>,
+    proxy: Option<rack_proxy::ProxyServer>,
     control: Option<ControlServer>,
     hooks: Vec<HookSummary>,
     hook_scheduler: Option<HookScheduler>,
@@ -49,8 +53,8 @@ impl RackRuntime {
         }
 
         let proxy_runtime = tokio::runtime::Runtime::new().map_err(|error| error.to_string())?;
-        let proxy = bind_proxy(&proxy_runtime).map_err(|error| error.to_string())?;
-        let deployed_hooks = hooks::load_deployed(&proxy.hooks());
+        let proxy = bind_proxy(&proxy_runtime)?;
+        let deployed_hooks = hook_registry::load_deployed(&proxy.hooks());
         let hook_scheduler = Some(HookScheduler::start(deployed_hooks.crons));
         let configs = Arc::new(RwLock::new(configs));
         let control = ControlServer::start(
@@ -75,33 +79,6 @@ impl RackRuntime {
         serde_json::to_string(&self.snapshot()?).map_err(|error| error.to_string())
     }
 
-    pub fn hooks_json(&self) -> Result<String, String> {
-        serde_json::to_string(&self.hooks).map_err(|error| error.to_string())
-    }
-
-    pub fn hook_path(name: &str) -> Result<String, String> {
-        Ok(hooks::deployed_hook_path(name)?
-            .to_string_lossy()
-            .into_owned())
-    }
-
-    pub fn reload_hooks(&mut self) -> Result<(), String> {
-        let Some(proxy) = &self.proxy else {
-            return Err("proxy is not running".to_string());
-        };
-        proxy.hooks().clear();
-        self.hook_scheduler.take();
-        let deployed_hooks = hooks::load_deployed(&proxy.hooks());
-        self.hook_scheduler = Some(HookScheduler::start(deployed_hooks.crons));
-        self.hooks = deployed_hooks.summaries;
-        Ok(())
-    }
-
-    pub fn remove_hook(&mut self, name: &str) -> Result<(), String> {
-        hooks::remove_deployed(name)?;
-        self.reload_hooks()
-    }
-
     pub fn snapshot(&self) -> Result<Snapshot, String> {
         let views = self.supervisor.list().map_err(|error| error.to_string())?;
         self.refresh_proxy_targets(&views);
@@ -115,104 +92,6 @@ impl RackRuntime {
         })
     }
 
-    pub fn start_service(&self, id: &str) -> Result<(), String> {
-        self.supervisor
-            .start_service(id)
-            .map_err(|error| error.to_string())?;
-        self.refresh_after_command()
-    }
-
-    pub fn stop_service(&self, id: &str) -> Result<(), String> {
-        self.supervisor
-            .stop_service(id)
-            .map_err(|error| error.to_string())?;
-        self.refresh_after_command()
-    }
-
-    pub fn restart_service(&self, id: &str) -> Result<(), String> {
-        self.supervisor
-            .restart_service(id)
-            .map_err(|error| error.to_string())?;
-        self.refresh_after_command()
-    }
-
-    pub fn log(&self, id: &str) -> Result<String, String> {
-        self.supervisor.log(id).map_err(|error| error.to_string())
-    }
-
-    pub fn log_path(&self, id: &str) -> Result<String, String> {
-        if !self
-            .configs
-            .read()
-            .map_err(|error| error.to_string())?
-            .contains_key(id)
-        {
-            return Err(format!("unknown service: {id}"));
-        }
-        Ok(service_log_path(id).to_string_lossy().into_owned())
-    }
-
-    pub fn add_service(&mut self, service: ServiceConfig) -> Result<Snapshot, String> {
-        let mut config = config::load().map_err(|error| error.to_string())?;
-        config::add_service(&mut config, service.clone()).map_err(|error| error.to_string())?;
-        self.supervisor
-            .register(service.clone())
-            .map_err(|error| error.to_string())?;
-        config::save(&config).map_err(|error| error.to_string())?;
-        self.configs
-            .write()
-            .map_err(|error| error.to_string())?
-            .insert(service.id.clone(), service);
-        self.snapshot()
-    }
-
-    pub fn edit_service(&mut self, id: &str, service: ServiceConfig) -> Result<Snapshot, String> {
-        let mut config = config::load().map_err(|error| error.to_string())?;
-        config::replace_service(&mut config, id, service.clone())
-            .map_err(|error| error.to_string())?;
-        self.supervisor
-            .update(service.clone())
-            .map_err(|error| error.to_string())?;
-        config::save(&config).map_err(|error| error.to_string())?;
-        self.configs
-            .write()
-            .map_err(|error| error.to_string())?
-            .insert(service.id.clone(), service);
-        self.snapshot()
-    }
-
-    pub fn remove_service(&mut self, id: &str) -> Result<Snapshot, String> {
-        let mut config = config::load().map_err(|error| error.to_string())?;
-        config::remove_service(&mut config, id).map_err(|error| error.to_string())?;
-        self.supervisor
-            .unregister(id)
-            .map_err(|error| error.to_string())?;
-        config::save(&config).map_err(|error| error.to_string())?;
-        self.configs
-            .write()
-            .map_err(|error| error.to_string())?
-            .remove(id);
-        self.snapshot()
-    }
-
-    pub fn config_path() -> Result<String, String> {
-        let path = config::config_path()
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| "could not determine config path".to_string())?;
-        Ok(path.to_string_lossy().into_owned())
-    }
-
-    pub fn terminal() -> Result<String, String> {
-        Ok(config::load().map_err(|error| error.to_string())?.terminal)
-    }
-
-    pub fn set_terminal(terminal: &str) -> Result<(), String> {
-        let mut config = config::load().map_err(|error| error.to_string())?;
-        config::set_terminal(&mut config, terminal).map_err(|error| error.to_string())?;
-        config::save(&config).map_err(|error| error.to_string())?;
-        Ok(())
-    }
-
     fn refresh_after_command(&self) -> Result<(), String> {
         let views = self.supervisor.list().map_err(|error| error.to_string())?;
         self.refresh_proxy_targets(&views);
@@ -220,9 +99,8 @@ impl RackRuntime {
     }
 
     fn refresh_proxy_targets(&self, services: &[ServiceView]) {
-        let targets = services.iter().filter_map(service_target);
         if let Some(proxy) = &self.proxy {
-            proxy.targets().update(TargetTable::new(targets));
+            proxy.targets().update(target_table(services));
         }
     }
 }
@@ -243,28 +121,4 @@ pub fn auto_start_ids(services: &[ServiceConfig]) -> Vec<String> {
         .filter(|service| service.auto_start)
         .map(|service| service.id.clone())
         .collect()
-}
-
-fn bind_proxy(runtime: &tokio::runtime::Runtime) -> Result<ProxyServer, String> {
-    for port in 1355..=1365 {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
-        match runtime.block_on(ProxyServer::bind(addr, TargetTable::default())) {
-            Ok(proxy) => return Ok(proxy),
-            Err(error) => eprintln!("failed to bind proxy at {addr}: {error}"),
-        }
-    }
-
-    Err("failed to bind proxy on ports 1355 through 1365".to_string())
-}
-
-fn service_target(service: &ServiceView) -> Option<ServiceTarget> {
-    let ServiceState::Running { ports, .. } = &service.state else {
-        return None;
-    };
-
-    Some(ServiceTarget {
-        service_id: service.id.clone(),
-        host: service.host.clone(),
-        port: *ports.first()?,
-    })
 }

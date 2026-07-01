@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::net::SocketAddr;
 
 use rack_proxy::{ProxyServer, ServiceTarget, TargetTable};

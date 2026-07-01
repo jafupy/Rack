@@ -1,4 +1,5 @@
 mod client;
+mod handler;
 mod protocol;
 mod server;
 

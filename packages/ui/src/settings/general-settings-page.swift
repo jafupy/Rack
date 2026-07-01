@@ -1,52 +1,5 @@
 import SwiftUI
 
-public struct GeneralSettingsState {
-  public var launchAtLoginEnabled: Bool
-  public var launchAtLoginMessage: String?
-  public var terminalName: String
-  public var configPath: String?
-  public var cliInstallMessage: String?
-
-  public init(
-    launchAtLoginEnabled: Bool = false,
-    launchAtLoginMessage: String? = nil,
-    terminalName: String = "Ghostty",
-    configPath: String? = nil,
-    cliInstallMessage: String? = nil
-  ) {
-    self.launchAtLoginEnabled = launchAtLoginEnabled
-    self.launchAtLoginMessage = launchAtLoginMessage
-    self.terminalName = terminalName
-    self.configPath = configPath
-    self.cliInstallMessage = cliInstallMessage
-  }
-}
-
-public struct GeneralSettingsActions {
-  public var setLaunchAtLogin: (Bool) -> String?
-  public var setTerminalName: (String) throws -> Void
-  public var revealConfig: () -> Void
-  public var openConfig: () -> Void
-  public var installCLI: () -> String
-  public var quit: () -> Void
-
-  public init(
-    setLaunchAtLogin: @escaping (Bool) -> String? = { _ in nil },
-    setTerminalName: @escaping (String) throws -> Void = { _ in },
-    revealConfig: @escaping () -> Void = {},
-    openConfig: @escaping () -> Void = {},
-    installCLI: @escaping () -> String = { "CLI installer is not available in this build." },
-    quit: @escaping () -> Void = {}
-  ) {
-    self.setLaunchAtLogin = setLaunchAtLogin
-    self.setTerminalName = setTerminalName
-    self.revealConfig = revealConfig
-    self.openConfig = openConfig
-    self.installCLI = installCLI
-    self.quit = quit
-  }
-}
-
 struct GeneralSettingsPage: View {
   let runningCount: Int
   let totalServiceCount: Int
@@ -85,74 +38,93 @@ struct GeneralSettingsPage: View {
         subtitle: "Product preferences for Rack startup, terminal integration, and local tooling."
       )
 
-      SettingsCard {
-        VStack(alignment: .leading, spacing: 14) {
-          LabeledContent("Services", value: "\(runningCount) running of \(totalServiceCount)")
-          LabeledContent("Hooks", value: "\(hookCount) discovered")
-        }
-      }
+      summaryCard
+      launchAtLoginCard
+      terminalCard
+      configurationCard
+      cliCard
+      quitCard
+    }
+  }
 
-      SettingsCard {
-        Toggle("Launch Rack at login", isOn: launchBinding)
-        if let launchAtLoginMessage {
-          Text(launchAtLoginMessage).font(.caption).foregroundStyle(.secondary)
-        }
+  private var summaryCard: some View {
+    SettingsCard {
+      VStack(alignment: .leading, spacing: 14) {
+        LabeledContent("Services", value: "\(runningCount) running of \(totalServiceCount)")
+        LabeledContent("Hooks", value: "\(hookCount) discovered")
       }
+    }
+  }
 
-      SettingsCard {
-        VStack(alignment: .leading, spacing: 10) {
-          Text("Terminal").font(.headline)
-          Picker("Open logs in", selection: terminalBinding) {
-            ForEach(terminalOptions, id: \.self) { terminal in
-              Text(terminal).tag(terminal)
-            }
-          }
-          .pickerStyle(.menu)
-          if let terminalMessage {
-            Text(terminalMessage).font(.caption).foregroundStyle(.secondary)
-          }
-        }
+  private var launchAtLoginCard: some View {
+    SettingsCard {
+      Toggle("Launch Rack at login", isOn: launchBinding)
+      if let launchAtLoginMessage {
+        Text(launchAtLoginMessage).font(.caption).foregroundStyle(.secondary)
       }
+    }
+  }
 
-      SettingsCard {
-        VStack(alignment: .leading, spacing: 12) {
-          Text("Configuration").font(.headline)
-          Text(configPath ?? "Config path is unavailable in this environment.")
-            .font(.callout.monospaced())
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-          HStack {
-            Button("Reveal in Finder") { actions.revealConfig() }
-            Button("Open") { actions.openConfig() }
-          }
-          .disabled(configPath == nil)
-        }
-      }
-
-      SettingsCard {
-        VStack(alignment: .leading, spacing: 12) {
-          Text("Command Line Tool").font(.headline)
-          Text("Install the bundled `rack` command to `~/.local/bin/rack`.")
-            .foregroundStyle(.secondary)
-          Button("Install CLI") {
-            cliInstallMessage = actions.installCLI()
-          }
-          if let cliInstallMessage {
-            Text(cliInstallMessage).font(.caption).foregroundStyle(.secondary)
+  private var terminalCard: some View {
+    SettingsCard {
+      VStack(alignment: .leading, spacing: 10) {
+        Text("Terminal").font(.headline)
+        Picker("Open logs in", selection: terminalBinding) {
+          ForEach(terminalOptions, id: \.self) { terminal in
+            Text(terminal).tag(terminal)
           }
         }
+        .pickerStyle(.menu)
+        if let terminalMessage {
+          Text(terminalMessage).font(.caption).foregroundStyle(.secondary)
+        }
       }
+    }
+  }
 
-      SettingsCard {
+  private var configurationCard: some View {
+    SettingsCard {
+      VStack(alignment: .leading, spacing: 12) {
+        Text("Configuration").font(.headline)
+        Text(configPath ?? "Config path is unavailable in this environment.")
+          .font(.callout.monospaced())
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
         HStack {
-          VStack(alignment: .leading, spacing: 4) {
-            Text("Quit Rack").font(.headline)
-            Text("Stops running services and exits the menu bar app.")
-              .foregroundStyle(.secondary)
-          }
-          Spacer()
-          Button("Quit", role: .destructive) { actions.quit() }
+          Button("Reveal in Finder") { actions.revealConfig() }
+          Button("Open") { actions.openConfig() }
         }
+        .disabled(configPath == nil)
+      }
+    }
+  }
+
+  private var cliCard: some View {
+    SettingsCard {
+      VStack(alignment: .leading, spacing: 12) {
+        Text("Command Line Tool").font(.headline)
+        Text("Install the bundled `rack` command to `~/.local/bin/rack`.")
+          .foregroundStyle(.secondary)
+        Button("Install CLI") {
+          cliInstallMessage = actions.installCLI()
+        }
+        if let cliInstallMessage {
+          Text(cliInstallMessage).font(.caption).foregroundStyle(.secondary)
+        }
+      }
+    }
+  }
+
+  private var quitCard: some View {
+    SettingsCard {
+      HStack {
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Quit Rack").font(.headline)
+          Text("Stops running services and exits the menu bar app.")
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+        Button("Quit", role: .destructive) { actions.quit() }
       }
     }
   }

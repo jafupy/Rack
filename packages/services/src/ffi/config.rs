@@ -3,8 +3,8 @@ use std::os::raw::c_char;
 use crate::runtime::RackRuntime;
 
 use super::{
-    functions::{c_string, status, string_result, FfiError},
     status::RackServicesStatus,
+    support::{c_string, status, string_result, FfiError},
 };
 
 #[no_mangle]
