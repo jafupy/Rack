@@ -4,9 +4,13 @@ APP_NAME := rack
 PRODUCT_NAME := Rack
 BUNDLE_ID := dev.jafu.rack
 CONFIGURATION := debug
-CARGO_PROFILE_DIR := $(if $(filter release,$(CONFIGURATION)),release,debug)
+ifneq ($(filter $(CONFIGURATION),debug release),$(CONFIGURATION))
+$(error CONFIGURATION must be debug or release)
+endif
+CARGO_PROFILE_DIR := $(CONFIGURATION)
 CARGO_PROFILE_FLAG := $(if $(filter release,$(CARGO_PROFILE_DIR)),--release,)
-SWIFT_CONFIGURATION := $(if $(filter release,$(CONFIGURATION)),release,debug)
+SWIFT_CONFIGURATION := $(CONFIGURATION)
+SWIFT_BIN_PATH := .build/rack-swift-bin-path
 RUST_LIB := .build/rust/$(CARGO_PROFILE_DIR)/deps/librack_services.dylib
 RUST_CLI := .build/rust/$(CARGO_PROFILE_DIR)/rack-cli
 APP := dist/$(APP_NAME).app
@@ -26,13 +30,12 @@ rust:
 
 swift: rust
 	RACK_RUST_PROFILE_DIR=$(CARGO_PROFILE_DIR) swift build --configuration $(SWIFT_CONFIGURATION)
+	RACK_RUST_PROFILE_DIR=$(CARGO_PROFILE_DIR) swift build --configuration $(SWIFT_CONFIGURATION) --show-bin-path > $(SWIFT_BIN_PATH)
 
 app: swift
 	rm -rf $(APP)
 	mkdir -p $(MACOS) $(FRAMEWORKS) $(RESOURCES)
-	SWIFT_BIN=$$(find .build -path "*/$(SWIFT_CONFIGURATION)/$(PRODUCT_NAME)" -type f | sort | tail -n 1); \
-		test -n "$$SWIFT_BIN"; \
-		cp "$$SWIFT_BIN" $(MACOS)/$(PRODUCT_NAME)
+	cp "$$(cat $(SWIFT_BIN_PATH))/$(PRODUCT_NAME)" $(MACOS)/$(PRODUCT_NAME)
 	cp $(RUST_LIB) $(FRAMEWORKS)/librack_services.dylib
 	cp $(RUST_CLI) $(RESOURCES)/rack-cli
 	install_name_tool -change $(abspath $(RUST_LIB)) @executable_path/../Frameworks/librack_services.dylib $(MACOS)/$(PRODUCT_NAME)

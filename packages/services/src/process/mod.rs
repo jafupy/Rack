@@ -20,6 +20,7 @@ pub use ports::parse_listen_ports;
 use signal::{kill_group, terminate_group};
 
 const DEFAULT_TERM_GRACE: Duration = Duration::from_secs(3);
+const MAX_TERM_GRACE: Duration = Duration::from_secs(60);
 const TERM_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 pub struct Process {
@@ -81,7 +82,9 @@ impl Process {
         while Instant::now() < deadline {
             match self.has_exited() {
                 Ok(true) => {
-                    self.wait_for_exit(id)?;
+                    if let Err(error) = self.wait_for_exit(id) {
+                        eprintln!("service {id} exited but wait failed: {error}");
+                    }
                     return Ok(());
                 }
                 Ok(false) => thread::sleep(TERM_POLL_INTERVAL),
@@ -128,13 +131,20 @@ fn term_grace() -> Duration {
         return DEFAULT_TERM_GRACE;
     };
 
-    match value.parse() {
-        Ok(ms) => Duration::from_millis(ms),
-        Err(_) => {
-            eprintln!("invalid RACK_TERM_GRACE_MS `{value}`; using default");
-            DEFAULT_TERM_GRACE
-        }
+    let Ok(ms) = value.parse() else {
+        eprintln!("invalid RACK_TERM_GRACE_MS `{value}`; using default");
+        return DEFAULT_TERM_GRACE;
+    };
+
+    let grace = Duration::from_millis(ms);
+    if grace.is_zero() {
+        eprintln!("RACK_TERM_GRACE_MS=0 disables graceful shutdown");
     }
+    if grace > MAX_TERM_GRACE {
+        eprintln!("RACK_TERM_GRACE_MS exceeds 60000; clamping to 60000");
+        return MAX_TERM_GRACE;
+    }
+    grace
 }
 
 fn capture_output(child: &mut Child) -> (Receiver<String>, Vec<JoinHandle<()>>) {
