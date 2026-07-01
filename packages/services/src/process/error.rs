@@ -24,6 +24,12 @@ pub enum ProcessError {
         source: io::Error,
     },
 
+    #[error("failed to wait for service {service} shutdown: {source}")]
+    WaitFailed {
+        service: String,
+        #[source]
+        source: io::Error,
+    },
     #[error("failed to stop service {service} process group {pgid}: {source}")]
     StopFailed {
         service: String,

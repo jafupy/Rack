@@ -81,7 +81,7 @@ impl Process {
         while Instant::now() < deadline {
             match self.has_exited() {
                 Ok(true) => {
-                    let _ = self.child.wait();
+                    self.wait_for_exit(id)?;
                     return Ok(());
                 }
                 Ok(false) => thread::sleep(TERM_POLL_INTERVAL),
@@ -93,12 +93,21 @@ impl Process {
         }
 
         kill_group(id, self.pgid)?;
-        let _ = self.child.wait();
-        Ok(())
+        self.wait_for_exit(id)
     }
 
     pub fn has_exited(&mut self) -> io::Result<bool> {
         self.child.try_wait().map(|status| status.is_some())
+    }
+
+    fn wait_for_exit(&mut self, id: &str) -> Result<(), ProcessError> {
+        self.child
+            .wait()
+            .map(|_| ())
+            .map_err(|source| ProcessError::WaitFailed {
+                service: id.to_string(),
+                source,
+            })
     }
 
     pub fn drain_output(&mut self) -> Vec<String> {
@@ -115,11 +124,17 @@ impl Process {
 }
 
 fn term_grace() -> Duration {
-    env::var("RACK_TERM_GRACE_MS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .map(Duration::from_millis)
-        .unwrap_or(DEFAULT_TERM_GRACE)
+    let Ok(value) = env::var("RACK_TERM_GRACE_MS") else {
+        return DEFAULT_TERM_GRACE;
+    };
+
+    match value.parse() {
+        Ok(ms) => Duration::from_millis(ms),
+        Err(_) => {
+            eprintln!("invalid RACK_TERM_GRACE_MS `{value}`; using default");
+            DEFAULT_TERM_GRACE
+        }
+    }
 }
 
 fn capture_output(child: &mut Child) -> (Receiver<String>, Vec<JoinHandle<()>>) {

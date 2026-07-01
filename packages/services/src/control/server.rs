@@ -55,7 +55,7 @@ impl ControlServer {
 
 impl Drop for ControlServer {
     fn drop(&mut self) {
-        self.running.store(false, Ordering::Relaxed);
+        self.running.store(false, Ordering::Release);
         let _ = UnixStream::connect(&self.path);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
@@ -90,9 +90,9 @@ fn run(
     targets: SharedTargets,
     running: Arc<AtomicBool>,
 ) {
-    while running.load(Ordering::Relaxed) {
+    while running.load(Ordering::Acquire) {
         match listener.accept() {
-            Ok((stream, _)) if running.load(Ordering::Relaxed) => {
+            Ok((stream, _)) if running.load(Ordering::Acquire) => {
                 handle_client(stream, &supervisor, &configs, proxy_port, &targets)
             }
             Ok(_) => break,
