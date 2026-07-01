@@ -5,7 +5,7 @@ mod deploy;
 mod init;
 mod list;
 mod remove;
-#[path = "test-cmd.rs"]
+#[path = "test-cmd/mod.rs"]
 mod test;
 
 use anyhow::Result;

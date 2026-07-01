@@ -7,13 +7,11 @@ use rack_hooks::{
 
 use super::build;
 
-#[path = "test/artifact.rs"]
-mod artifact;
-#[path = "test/target.rs"]
-mod target;
+mod target_selection;
+mod wasm_artifact;
 
-use artifact::built_wasm_path;
-use target::{select_test_target, TestTarget};
+use target_selection::{select_test_target, TestTarget};
+use wasm_artifact::built_wasm_path;
 
 pub fn run(path: &str, hook: Option<&str>, route: Option<&str>) -> Result<()> {
     build::run(path)?;
